@@ -12,6 +12,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
+import model.Game;
+import model.Player;
+import model.properties.BaseProperty;
+import model.TradeOffer;
 
 import java.io.IOException;
 import java.util.Map;
@@ -116,6 +120,10 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 }
             } else if (payload.startsWith("BUY_PROPERTY:")) {
                 handleBuyProperty(session, userId, payload);
+            } else if (payload.startsWith("START_TRADE:")) {
+                handleStartTrade(session, payload);
+            } else if (payload.startsWith("TRADE_RESPONSE:")) {
+                handleTradeResponse(session, payload);
             } else {
                 String safePayload = sanitizeForLog(payload);
                 logger.log(Level.INFO, "Received unknown message format: {0} from player {1}", new Object[]{safePayload, userId});
@@ -213,6 +221,81 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             logger.log(Level.SEVERE, "Error handling BUY_PROPERTY for player {0}: {1}", new Object[]{userId, e.getMessage()});
             sendMessageToSession(session, createJsonError("Server error handling buy property request."));
         }
+    }
+
+    private void handleStartTrade(WebSocketSession session, String payload) {
+        try {
+            TradeOffer offer = objectMapper.readValue(payload.substring("START_TRADE:".length()), TradeOffer.class);
+
+            Optional<WebSocketSession> receiverSession = findSessionByUserId(offer.getReceivingPlayerId());
+            if (receiverSession.isPresent()) {
+                String json = objectMapper.writeValueAsString(offer);
+                receiverSession.get().sendMessage(new TextMessage("TRADE_REQUEST:" + json));
+            }
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Error handling trade offer: {0}", e.getMessage());
+        }
+    }
+
+    private void handleTradeResponse(WebSocketSession session, String payload) {
+        try {
+            JsonNode responseNode = objectMapper.readTree(payload.substring("TRADE_RESPONSE:".length()));
+            String decision = responseNode.get("decision").asText();
+            String offerJson = responseNode.get("offer").toString();
+
+            TradeOffer offer = objectMapper.readValue(offerJson, TradeOffer.class);
+
+            if ("ACCEPT".equalsIgnoreCase(decision)) {
+                executeTrade(offer);
+            } else if ("COUNTER".equalsIgnoreCase(decision)) {
+                // Future: handle counter offer
+            } else {
+                // Trade declined - optional: notify both players
+            }
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Error handling trade response: {0}", e.getMessage());
+        }
+    }
+
+    private void executeTrade(TradeOffer offer) {
+        Optional<Player> offeringPlayerOpt = game.getPlayerById(offer.getOfferingPlayerId());
+        Optional<Player> receivingPlayerOpt = game.getPlayerById(offer.getReceivingPlayerId());
+
+        if (offeringPlayerOpt.isEmpty() || receivingPlayerOpt.isEmpty()) {
+            logger.log(Level.WARNING, "One of the players in the trade not found.");
+            return;
+        }
+
+        Player offeringPlayer = offeringPlayerOpt.get();
+        Player receivingPlayer = receivingPlayerOpt.get();
+
+        offeringPlayer.subtractMoney(offer.getOfferedMoney());
+        receivingPlayer.addMoney(offer.getOfferedMoney());
+
+        receivingPlayer.subtractMoney(offer.getRequestedMoney());
+        offeringPlayer.addMoney(offer.getRequestedMoney());
+
+        for (int propertyId : offer.getOfferedPropertyIds()) {
+            BaseProperty property = propertyTransactionService.findPropertyById(propertyId);
+            if (property != null && offeringPlayer.getId().equals(property.getOwnerId())) {
+                property.setOwnerId(receivingPlayer.getId());
+            }
+        }
+
+        for (int propertyId : offer.getRequestedPropertyIds()) {
+            BaseProperty property = propertyTransactionService.findPropertyById(propertyId);
+            if (property != null && receivingPlayer.getId().equals(property.getOwnerId())) {
+                property.setOwnerId(offeringPlayer.getId());
+            }
+        }
+
+        broadcastGameState();
+    }
+
+    private Optional<WebSocketSession> findSessionByUserId(String userId) {
+        return sessions.stream()
+                .filter(session -> userId.equals(sessionToUserId.get(session.getId())))
+                .findFirst();
     }
 
     private void sendMessageToSession(WebSocketSession session, String message) {

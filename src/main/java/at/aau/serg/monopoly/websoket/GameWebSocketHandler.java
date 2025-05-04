@@ -29,7 +29,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private static final String PLAYER_PREFIX = "Player ";
     private final Logger logger = Logger.getLogger(GameWebSocketHandler.class.getName());
     protected final CopyOnWriteArrayList<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
-    private final Map<String, String> sessionToUserId = new ConcurrentHashMap<>();
+    public final Map<String, String> sessionToUserId = new ConcurrentHashMap<>();
     private final Game game = new Game();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private DiceManagerInterface diceManager;
@@ -91,6 +91,9 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 } else if ("END_GAME".equals(type)) {
                     handleEndGame(jsonNode);
                     return;
+                } else if ("GIVE_UP".equals(type)) {
+                    handleGiveUp(session, jsonNode);
+                    return;
                 }
             }
         } catch (IOException e) {
@@ -132,7 +135,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 String json = objectMapper.writeValueAsString(drm);
                 broadcastMessage(json);
 
-                if (roll != 12){
+                if (roll != 12) {
                     game.nextPlayer();
                 }
 
@@ -166,9 +169,9 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                         sendMessageToSession(session, createJsonError("Invalid roll value. Must be between 1 and 39."));
                         return;
                     }
-                    
+
                     logger.log(Level.INFO, "Player {0} manually rolled {1}", new Object[]{userId, manualRoll});
-                    
+
                     DiceRollMessage drm = new DiceRollMessage(userId, manualRoll, true);
                     String json = objectMapper.writeValueAsString(drm);
                     broadcastMessage(json);
@@ -352,5 +355,28 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private String sanitizeForLog(String input) {
         String sanitized = input.replaceAll("[\\r\\n]", "_");
         return sanitized.length() > 100 ? sanitized.substring(0, 100) + "..." : sanitized;
+    }
+
+    private void handleGiveUp(WebSocketSession session, JsonNode jsonNode) {
+        try {
+            String userId = jsonNode.get("userId").asText();
+            if (userId == null || !sessionToUserId.containsValue(userId)) {
+                sendMessageToSession(session, createJsonError("Invalid user"));
+                return;
+            }
+
+            game.removePlayer(userId);
+            sessionToUserId.remove(session.getId());
+            broadcastMessage("Player gave up: " + userId);
+            System.out.println("Player gave up: " + userId);
+
+            // Optional: Trage in Datenbank als "verloren" ein
+            gameHistoryService.markPlayerAsLoser(userId); // ← wenn du das hast
+
+            session.close();
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Error processing GIVE_UP message", e);
+            sendMessageToSession(session, createJsonError("Error processing give up."));
+        }
     }
 }

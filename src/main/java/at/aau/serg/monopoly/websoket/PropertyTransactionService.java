@@ -1,4 +1,5 @@
 package at.aau.serg.monopoly.websoket;
+
 import model.Player;
 import model.properties.BaseProperty;
 import org.springframework.beans.factory.annotation.Autowired;

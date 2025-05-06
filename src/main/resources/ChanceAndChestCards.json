@@ -1,0 +1,105 @@
+{
+  "CHANCE": [
+    {
+      "id": 1,
+      "description": "Heute ist dein Geburtstag! Jeder Spieler schenkt dir €50!",
+      "action": "GET_MONEY",
+      "amount": 50,
+      "othersPay": true
+    },
+    {
+      "id": 2,
+      "description": "Gehe direkt ins Gefängnis! Gehe nicht über Los! Ziehe nicht €200 ein",
+      "action": "MOVE",
+      "field": 30
+    },
+    {
+      "id": 3,
+      "description": "Gehe 3 Felder zurück!",
+      "action": "MOVE",
+      "spaces": -3
+    },
+    {
+      "id": 4,
+      "description": "Gehe zu Rathausplatz. Falls du über Los gehst, ziehe €200 ein!",
+      "action": "MOVE",
+      "field": 31
+    },
+    {
+      "id": 5,
+      "description": "Großer Tag! Die Bank zahlt dir Dividende in Höhe von €75!",
+      "action": "GET_MONEY",
+      "amount": 75,
+      "othersPay": false
+    },
+    {
+      "id": 6,
+      "description": "Gehe zu Hafenstrasse. Falls du über Los gehst, ziehe €200 ein!",
+      "action": "MOVE",
+      "field": 13
+    },
+     {
+      "id": 7,
+      "description": "Dein Nebengeschäft zahlt sich aus. Ziehe €75 ein!",
+      "action": "GET_MONEY",
+      "amount": 75
+    }
+  ],
+  "COMMUNITY_CHEST": [
+    {
+      "id": 1,
+      "description": "Gehe direkt ins Gefängnis! Gehe nicht über Los! Ziehe nicht €200 ein",
+      "action": "MOVE",
+      "field": 30
+    },
+    {
+      "id": 2,
+      "description": "Bankirrtum zu deinen Gunsten. Ziehe €200 ein!",
+      "action": "GET_MONEY",
+      "amount": 200,
+      "othersPay": false
+    },
+    {
+      "id": 3,
+      "description": "Einkommensteuerrückzahlung! Ziehe €50 ein!",
+      "action": "GET_MONEY",
+      "amount": 50,
+      "othersPay": false
+    },
+    {
+     "id": 4,
+     "description": "Du wurdest zum Vorstandsvorsitzenden gewählt. Zahle jedem Spieler €50!",
+     "action": "PAY",
+     "amount": 50,
+      "othersGet": true
+    },
+    {
+     "id": 5,
+     "description": "Deine Lebensversicherung wird fällig. Ziehe €125 ein!",
+     "action": "GET_MONEY",
+     "amount": 125,
+      "othersPay": false
+    },
+    {
+     "id": 6,
+     "description": "Dein Baukredit wird fällig. Ziehe €50 ein!",
+     "action": "GET_MONEY",
+     "amount": 50,
+      "othersPay": false
+    },
+    {
+      "id": 7,
+      "description": "Einkommensteuerrückzahlung! Ziehe €100 ein!",
+      "action": "GET_MONEY",
+      "amount": 100,
+      "othersPay": false
+    },
+    {
+     "id": 8,
+     "description": "Du erbst €150!",
+     "action": "GET_MONEY",
+     "amount": 150,
+      "othersPay": false
+    }
+  ]
+}

@@ -3,6 +3,8 @@ package at.aau.serg.monopoly.websoket;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import data.DiceRollMessage;
+import data.DrawnCardMessage;
+import data.PullCardMessage;
 import data.TaxPaymentMessage;
 import lombok.NonNull;
 import model.DiceManager;
@@ -13,7 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
-
 import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
@@ -35,7 +36,8 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private DiceManagerInterface diceManager;
     @Autowired
     private GameHistoryService gameHistoryService;
-
+    @Autowired
+    private CardDeckService cardDeckService;
     @Autowired
     private PropertyTransactionService propertyTransactionService;
 
@@ -117,6 +119,9 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             if (payload.contains("\"type\":\"TAX_PAYMENT\"")) {
                 try {
                     TaxPaymentMessage taxMsg = objectMapper.readValue(payload, TaxPaymentMessage.class);
+                    logger.info("Player " + taxMsg.getPlayerId()
+                            + " has to pay taxes");
+
                     if (taxMsg.getPlayerId().equals(userId)) {
                         game.updatePlayerMoney(userId, -taxMsg.getAmount());
                         broadcastMessage(payload);
@@ -126,6 +131,29 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 } catch (Exception e) {
                     logger.log(Level.WARNING, "Error processing tax payment message: {0}", e.getMessage());
                 }
+            }
+            if (payload.contains("\"type\":\"PULL_CARD\"")) {
+                PullCardMessage pull = objectMapper.readValue(payload, PullCardMessage.class);
+                logger.info("Player " + pull.getPlayerId()
+                        + " requested a " + pull.getCardType() + " card");
+
+                model.cards.CardType deckType = model.cards.CardType.valueOf(pull.getCardType());
+                model.cards.Card card = cardDeckService.drawCard(deckType);
+
+                if (pull.getPlayerId().equals(userId)) {
+                    card.apply(game, pull.getPlayerId());
+
+                    DrawnCardMessage reply = new DrawnCardMessage(
+                            pull.getPlayerId(),
+                            pull.getCardType(),
+                            card
+                    );
+                    String jsonReply = objectMapper.writeValueAsString(reply);
+                    sendMessageToSession(session, jsonReply);
+                    logger.info("Player " + pull.getPlayerId() + " received a drawn card");
+                    broadcastGameState();
+                }
+                return;
             }
             if (payload.trim().equalsIgnoreCase("Roll")) {
                 int roll = diceManager.rollDices();
@@ -234,7 +262,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    private void broadcastGameState() {
+    void broadcastGameState() {
         try {
             String gameState = objectMapper.writeValueAsString(game.getPlayerInfo());
             broadcastMessage("GAME_STATE:" + gameState);

@@ -74,7 +74,8 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             game.addPlayer(userId, name);
             sessionToUserId.put(session.getId(), userId);
 
-            logger.log(Level.INFO, "Player connected: {0} | Name: {1}", new Object[]{userId, name});            broadcastMessage("SYSTEM: " + name + " (" + userId + ") joined the game");
+            logger.log(Level.INFO, "Player connected: {0} | Name: {1}", new Object[]{userId, name});
+            broadcastMessage("SYSTEM: " + name + " (" + userId + ") joined the game");
 
             // Spielstart-Logik anpassen
             if (sessionToUserId.size() >= 2 && sessionToUserId.size() <= 4) {
@@ -249,17 +250,16 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 handlePlayerLanding(player, position);
 
             } else if ("NEXT_TURN".equals(payload)) {
-                    logger.log(Level.INFO, "Received NEXT_TURN from {0}", userId);
+                logger.log(Level.INFO, "Received NEXT_TURN from {0}", userId);
 
-                    if (!game.isPlayerTurn(userId)) {
-                        sendMessageToSession(session, createJsonError("Not your turn!"));
-                        return;
-                    }
-
-                    game.nextPlayer();
-                    broadcastGameState();
+                if (!game.isPlayerTurn(userId)) {
+                    sendMessageToSession(session, createJsonError("Not your turn!"));
+                    return;
                 }
-            else if (payload.startsWith("MANUAL_ROLL:")) {
+
+                game.nextPlayer();
+                broadcastGameState();
+            } else if (payload.startsWith("MANUAL_ROLL:")) {
                 handleManualRoll(payload, userId, session);
             } else if (payload.startsWith("UPDATE_MONEY:")) {
                 handleUpdateMoney(payload, userId);
@@ -433,12 +433,20 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 return;
             }
 
+            boolean wasCurrentPlayer = game.isPlayerTurn(userId);
+
             game.removePlayer(userId);
             sessionToUserId.remove(session.getId());
             broadcastMessage("Player gave up: " + userId);
             logger.log(Level.INFO, "Player gave up: {0}", userId);
-            // Optional: Trage in Datenbank als "verloren" ein
-            gameHistoryService.markPlayerAsLoser(userId); // ← wenn du das hast
+
+            gameHistoryService.markPlayerAsLoser(userId);
+
+            if (wasCurrentPlayer && !game.getPlayers().isEmpty()) {
+                game.nextPlayer();
+            }
+
+            broadcastGameState();
 
             session.close();
         } catch (Exception e) {
@@ -446,6 +454,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             sendMessageToSession(session, createJsonError("Error processing give up."));
         }
     }
+
 
     private void handlePlayerLanding(Player player, int position) {
         try {
@@ -469,13 +478,13 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 if (rentCollected) {
                     // Create and broadcast rent payment message
                     RentPaymentMessage rentMsg = new RentPaymentMessage(
-                        player.getId(),
-                        property.getOwnerId(),
-                        property.getId(),
-                        property.getName(),
-                        rentCalculationService.calculateRent(property, 
-                            propertyService.getPlayerById(property.getOwnerId()), 
-                            player)
+                            player.getId(),
+                            property.getOwnerId(),
+                            property.getId(),
+                            property.getName(),
+                            rentCalculationService.calculateRent(property,
+                                    propertyService.getPlayerById(property.getOwnerId()),
+                                    player)
                     );
                     String jsonRent = objectMapper.writeValueAsString(rentMsg);
                     broadcastMessage(jsonRent);

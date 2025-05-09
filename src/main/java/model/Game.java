@@ -1,6 +1,9 @@
 package model;
+
 import java.util.Date;
+
 import lombok.Data;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -24,10 +27,15 @@ public class Game {
     public void start() {
         this.isStarted = true;
         this.startTime = new Date();
+        if (!players.isEmpty()) {
+            currentPlayerIndex = 0;
+        } else {
+            currentPlayerIndex = -1; // kein Spieler verfügbar
+        }
     }
 
     public void addPlayer(String id, String name) {
-        if(players.stream().noneMatch(p -> p.getId().equals(id))) {
+        if (players.stream().noneMatch(p -> p.getId().equals(id))) {
             players.add(new Player(id, name));
         }
     }
@@ -50,6 +58,9 @@ public class Game {
     }
 
     public Player getCurrentPlayer() {
+        if (players.isEmpty() || currentPlayerIndex < 0 || currentPlayerIndex >= players.size()) {
+            return null;
+        }
         return players.get(currentPlayerIndex);
     }
 
@@ -68,6 +79,7 @@ public class Game {
 
     /**
      * Finds a player by their unique ID.
+     *
      * @param id The ID of the player to find.
      * @return An Optional containing the Player if found, otherwise empty.
      */
@@ -79,6 +91,7 @@ public class Game {
 
     /**
      * Checks if it's the specified player's turn
+     *
      * @param playerId The ID of the player to check
      * @return true if it's the player's turn, false otherwise
      */
@@ -90,12 +103,11 @@ public class Game {
     }
 
     /**
-     *
      * @param roll The result of roll dice.
-     * @param id The ID of the player to find.
+     * @param id   The ID of the player to find.
      * @return If the player passes the Start field the method returns true, otherwise false.
      */
-    public boolean updatePlayerPosition(int roll, String id){
+    public boolean updatePlayerPosition(int roll, String id) {
         for (Player player : players) {
             if (player.getId().equals(id)) {
                 int oldPos = player.getPosition();
@@ -113,6 +125,7 @@ public class Game {
 
     /**
      * Beendet das Spiel und setzt den Gewinner
+     *
      * @param winnerId Die ID des Gewinners
      * @return Die Dauer des Spiels in Minuten
      */

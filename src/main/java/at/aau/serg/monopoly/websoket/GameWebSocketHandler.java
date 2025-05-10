@@ -36,6 +36,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private final Game game = new Game();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private DiceManagerInterface diceManager;
+    private static final int HIGH_PAYMENT_THRESHOLD = 1000;
 
     @Autowired
     private GameHistoryService gameHistoryService;
@@ -51,6 +52,11 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         diceManager = new DiceManager();
         diceManager.initializeStandardDices();
     }
+    private void sendSoundEffectMessage(String userId){
+        String soundMessage = "{\"type\":\"PLAY_SOUND\", \"sound\":\"high_payment.mp3\", \"playerId\":\"" + userId + "\"}";
+        broadcastMessage(soundMessage);  // Diese Nachricht wird an alle Clients gesendet
+    }
+
 
     protected void handleInitMessage(WebSocketSession session, JsonNode jsonNode) {
         try {
@@ -88,6 +94,9 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             if (taxMsg.getPlayerId().equals(userId)) {
                 game.updatePlayerMoney(userId, -taxMsg.getAmount());
                 broadcastMessage(payload);
+                if (taxMsg.getAmount() > HIGH_PAYMENT_THRESHOLD) {
+                    sendSoundEffectMessage(userId);  // Soundeffekt auslösen
+                }
                 broadcastGameState();
             }
         } catch (Exception e) {

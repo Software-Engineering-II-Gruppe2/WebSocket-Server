@@ -50,18 +50,37 @@ public class Game {
     }
 
     public Player getCurrentPlayer() {
-        return players.get(currentPlayerIndex);
+        if (players.isEmpty()) return null;
+
+        Player current = players.get(currentPlayerIndex);
+        if (!current.isConnected()) {
+            nextPlayer(); // skip disconnected player
+            return getCurrentPlayer();
+        }
+
+        return current;
     }
 
+
     public void nextPlayer() {
-        currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
+        if (players.isEmpty()) return;
+
+        int originalIndex = currentPlayerIndex;
+        int attempts = 0;
+        do {
+            currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
+            attempts++;
+        } while (!players.get(currentPlayerIndex).isConnected() && attempts < players.size());
+
+        // Reset hasRolled
         players.get(currentPlayerIndex).setHasRolledThisTurn(false);
     }
+
 
     public List<PlayerInfo> getPlayerInfo() {
         List<PlayerInfo> info = new ArrayList<>();
         for (Player player : players) {
-            info.add(new PlayerInfo(player.getId(), player.getName(), player.getMoney(), player.getPosition()));
+            info.add(new PlayerInfo(player.getId(), player.getName(), player.getMoney(), player.getPosition(), player.isConnected()));
         }
         return info;
     }

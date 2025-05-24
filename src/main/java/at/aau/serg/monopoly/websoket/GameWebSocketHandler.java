@@ -159,6 +159,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+        sessionLastSeen.put(session.getId(), System.currentTimeMillis());
         String payload = message.getPayload();
         String sessionId = session.getId();
 
@@ -296,14 +297,26 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(@NonNull WebSocketSession session, @NonNull CloseStatus status) {
         String userId = sessionToUserId.get(session.getId());
+
         if (userId != null) {
-            game.removePlayer(userId);
+            Optional<Player> playerOpt = game.getPlayerById(userId);
+            if (playerOpt.isPresent()) {
+                playerOpt.get().setConnected(false); //  als "disconnected" markieren
+                logger.info("Marked player " + userId + " as disconnected.");
+                broadcastMessage("Player disconnected: " + userId);
+            } else {
+                logger.warning("Disconnected player not found in game: " + userId);
+            }
+
+            // Session-Daten entfernen
             sessionToUserId.remove(session.getId());
-            broadcastMessage("Player left: " + userId + " (Total: " + sessions.size() + ")");
-            logger.log(Level.INFO, "Player disconnected: {0}", userId);//bewusst geloggt aktuell
+            sessionLastSeen.remove(session.getId());
+            sessions.remove(session);
         }
-        sessions.remove(session);
+
+        logger.log(Level.INFO, "Session closed: {0}", session.getId());
     }
+
 
     private void broadcastMessage(String message) {
         for (WebSocketSession session : sessions) {

@@ -11,6 +11,7 @@ import model.Game;
 import model.Player;
 import model.properties.BaseProperty;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
@@ -34,6 +35,8 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private final Game game = new Game();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private DiceManagerInterface diceManager;
+    private final Map<String, Long> sessionLastSeen = new ConcurrentHashMap<>();
+
 
     @Autowired
     private GameHistoryService gameHistoryService;
@@ -56,6 +59,8 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
 
         diceManager = new DiceManager();
         diceManager.initializeStandardDices();
+        sessionLastSeen.put(session.getId(), System.currentTimeMillis());
+
     }
 
     protected void handleInitMessage(WebSocketSession session, JsonNode jsonNode) {
@@ -81,6 +86,8 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             }
 
             broadcastGameState();
+            sessionLastSeen.put(session.getId(), System.currentTimeMillis());
+
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Error processing INIT: {0}", e.getMessage()); //bewusst geloggt aktuell
         }
@@ -532,4 +539,23 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             logger.log(Level.SEVERE, "Error handling player landing: {0}", e.getMessage());//bewusst geloggt aktuell
         }
     }
+
+    @Scheduled(fixedRate = 15000) // alle 15 Sekunden prüfen
+    public void checkInactiveSessions() {
+        long now = System.currentTimeMillis();
+        long timeout = 30000; // 30 Sekunden Inaktivität = Disconnect
+
+        for (WebSocketSession session : sessions) {
+            Long lastSeen = sessionLastSeen.get(session.getId());
+            if (lastSeen == null || (now - lastSeen > timeout)) {
+                try {
+                    logger.info("Session " + session.getId() + " inactive. Closing.");
+                    session.close(CloseStatus.SESSION_NOT_RELIABLE);
+                } catch (IOException e) {
+                    logger.warning("Failed to close inactive session: " + session.getId());
+                }
+            }
+        }
+    }
+
 }

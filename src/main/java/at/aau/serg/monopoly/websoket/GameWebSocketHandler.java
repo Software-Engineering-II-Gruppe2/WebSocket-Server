@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import data.*;
+import jakarta.annotation.PostConstruct;
 import lombok.NonNull;
 import model.DiceManager;
 import model.DiceManagerInterface;
@@ -32,7 +33,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private final Logger logger = Logger.getLogger(GameWebSocketHandler.class.getName());
     protected final CopyOnWriteArrayList<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
     final Map<String, String> sessionToUserId = new ConcurrentHashMap<>();
-    private final Game game = new Game();
+    private  Game game;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private DiceManagerInterface diceManager;
     private final Map<String, Long> sessionLastSeen = new ConcurrentHashMap<>();
@@ -53,6 +54,13 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     @Autowired
     private CheatService cheatService;
 
+
+    @PostConstruct
+    public void initGame() {
+        this.game = new Game();
+        logger.info("🎲 Neues Spiel initialisiert beim Server-Start.");
+    }
+
     @Override
     public void afterConnectionEstablished(@NonNull WebSocketSession session) {
         sessions.add(session);
@@ -67,15 +75,28 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         try {
             String userId = jsonNode.get("userId").asText();
             String name = jsonNode.get("name").asText();
+            if (game.getPlayers().isEmpty() || game.getPlayers().stream().noneMatch(Player::isConnected)) {
+                this.game = new Game();
+                logger.info("🎮 Spiel wurde neu gestartet, weil alle Spieler weg waren oder Spiel neu beginnt.");
+            }
 
             if (userId == null || sessionToUserId.containsValue(userId)) {
                 sendMessageToSession(session, createJsonError("Invalid user"));
                 return;
             }
 
+            // Spieler war schon in der Runde und wurde entfernt → nicht mehr reinlassen
+            if (game.getPlayerById(userId).isPresent() && !game.getPlayerById(userId).get().isConnected()) {
+                sendMessageToSession(session, createJsonError("Rejoining is not allowed."));
+                return;
+            }
+
             // Spieler mit Firebase-ID hinzufügen
             game.addPlayer(userId, name);
             sessionToUserId.put(session.getId(), userId);
+            Optional<Player> playerOpt = game.getPlayerById(userId);
+            playerOpt.ifPresent(p -> p.setConnected(true));
+
 
             logger.log(Level.INFO, "Player connected: {0} | Name: {1}", new Object[]{userId, name}); //bewusst geloggt aktuell
             broadcastMessage("SYSTEM: " + name + " (" + userId + ") joined the game");
@@ -87,7 +108,6 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
 
             broadcastGameState();
             sessionLastSeen.put(session.getId(), System.currentTimeMillis());
-
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Error processing INIT: {0}", e.getMessage()); //bewusst geloggt aktuell
         }
@@ -439,6 +459,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             broadcastMessage(createJsonMessage("Das Spiel wurde beendet. Der Gewinner ist " +
                     game.getPlayerById(winnerId).map(Player::getName).orElse("unbekannt")));
 
+            game= new Game();
             logger.info("Spiel beendet und Spielhistorie gespeichert");//bewusst geloggt aktuell
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Fehler beim Beenden des Spiels", e);//bewusst geloggt aktuell
@@ -553,10 +574,10 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    @Scheduled(fixedRate = 15000) // alle 15 Sekunden prüfen
+    @Scheduled(fixedRate = 15000)
     public void checkInactiveSessions() {
         long now = System.currentTimeMillis();
-        long timeout = 30000; // 30 Sekunden Inaktivität = Disconnect
+        long timeout = 30000;
 
         for (WebSocketSession session : sessions) {
             Long lastSeen = sessionLastSeen.get(session.getId());
@@ -568,6 +589,15 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                     logger.warning("Failed to close inactive session: " + session.getId());
                 }
             }
+        }
+
+        // NEU: Spiel zurücksetzen, wenn keiner mehr verbunden ist
+        if (game.getPlayers().stream().noneMatch(Player::isConnected)) {
+            logger.info("Alle Spieler sind inaktiv – Spiel wird neu gestartet.");
+            this.game = new Game();
+            sessions.clear();
+            sessionToUserId.clear();
+            sessionLastSeen.clear();
         }
     }
 

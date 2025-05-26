@@ -27,10 +27,20 @@ public class Game {
     }
 
     public void addPlayer(String id, String name) {
-        if(players.stream().noneMatch(p -> p.getId().equals(id))) {
-            players.add(new Player(id, name));
+        Optional<Player> existing = getPlayerById(id);
+        if (existing.isPresent()) {
+            if (!existing.get().isConnected()) {
+                // Spieler war schon dabei und ist jetzt disconnected → NICHT erneut zulassen!
+                return;
+            }
+            existing.get().setConnected(true); // nur wenn erlaubt
+            return;
         }
+        players.add(new Player(id, name));
     }
+
+
+
 
     public void removePlayer(String id) {
         players.removeIf(player -> player.getId().equals(id));

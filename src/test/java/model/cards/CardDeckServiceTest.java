@@ -47,6 +47,7 @@ class CardDeckServiceTest {
         }
     }
 
+    // fixme too many tests, extract into single functionality checks and use preceding tests' state as precondition for the next
     @Test
     void drawCard_popsAndDiscartsAndReshufflesWhenEmpty() throws Exception {
         realService.init();

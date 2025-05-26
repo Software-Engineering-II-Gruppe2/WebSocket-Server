@@ -28,6 +28,7 @@ public class PropertyService {
     @Getter
     private List<Utility> utilities;
 
+    // fixme remove test constr and mock a game or call with null
     public PropertyService() {
         // Default constructor for cases where Game is not needed
     }
@@ -112,6 +113,7 @@ public class PropertyService {
                 .orElse(null);
     }
 
+    // fixme avoid static classes and extract into extra file
     public static class PropertyDataWrapper {
         private List<HouseableProperty> properties;
         private List<TrainStation> trainStations;

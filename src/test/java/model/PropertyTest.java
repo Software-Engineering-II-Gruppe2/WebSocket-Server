@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// fixme dont need to test Lombok generation functionality
 class PropertyTest {
 
     private HouseableProperty houseableProperty;

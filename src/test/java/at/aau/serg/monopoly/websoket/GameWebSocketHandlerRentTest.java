@@ -20,6 +20,7 @@ import static org.mockito.Mockito.*;
 
 class GameWebSocketHandlerRentTest {
 
+    // fixme this shows that the websocket has too many game specific dependencies for decisions
     @Mock
     private WebSocketSession session;
     @Mock

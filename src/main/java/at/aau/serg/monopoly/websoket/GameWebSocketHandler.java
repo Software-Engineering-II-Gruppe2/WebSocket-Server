@@ -25,6 +25,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 
+// fixme this class contains too much game logic for a websocket handler - extract into a game logic class with calls back here to send a result
 @Component
 public class GameWebSocketHandler extends TextWebSocketHandler {
 
@@ -198,6 +199,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 handleTaxPayment(payload, userId);
                 return;
             }
+            // fixme extract functionality
             if (payload.contains("\"type\":\"RENT_PAYMENT\"")) {
                 try {
                     RentPaymentMessage rentMsg = objectMapper.readValue(payload, RentPaymentMessage.class);
@@ -253,6 +255,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 }
                 return;
             }
+            // fixme extract
             if (payload.contains("\"type\":\"PULL_CARD\"")) {
                 PullCardMessage pull = objectMapper.readValue(payload, PullCardMessage.class);
                 logger.info("Player " + pull.getPlayerId()
@@ -276,6 +279,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 }
                 return;
             }
+            // fixme extract
             if (payload.trim().equalsIgnoreCase("Roll")) {
                 if (!game.isPlayerTurn(userId)) {
                     sendMessageToSession(session, createJsonError("Not your turn!"));
@@ -569,6 +573,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void handlePlayerLanding(Player player, int position) {
+        // fixme extract magic constants
         try {
             // Check for tax squares
             if (position == 4) {  // Einkommensteuer

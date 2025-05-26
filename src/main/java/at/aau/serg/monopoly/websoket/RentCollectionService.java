@@ -52,6 +52,7 @@ public class RentCollectionService {
         return true;
     }
 
+    // fixme extract some sub methods
     /**
      * Collects rent from a player who landed on a property
      * @param renter The player who landed on the property

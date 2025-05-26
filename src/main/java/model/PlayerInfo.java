@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+// fixme is there a reason for having player and playerinfo
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

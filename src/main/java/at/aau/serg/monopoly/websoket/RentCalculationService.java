@@ -33,6 +33,8 @@ public class RentCalculationService {
             return 0;
         }
 
+        // fixme use polymorphism
+        // fixme only utilities require owner information
         // Calculate rent based on property type
         if (property instanceof HouseableProperty) {
             return calculateHouseablePropertyRent((HouseableProperty) property, owner);

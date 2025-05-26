@@ -21,6 +21,7 @@ public class GameHistoryService {
     private static final String COLLECTION_NAME = "users";
     private static final String SUBCOLLECTION_NAME = "gameHistory";
 
+    // fixme extract parameter list into object
     /**
      * Speichert die Spielhistorie für einen bestimmten Spieler
      *

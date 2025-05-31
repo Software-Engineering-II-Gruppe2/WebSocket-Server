@@ -4,12 +4,16 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import data.*;
+import jakarta.annotation.PostConstruct;
 import lombok.NonNull;
 import model.DiceManager;
 import model.DiceManagerInterface;
 import model.Game;
 import model.Player;
 import model.properties.BaseProperty;
+import data.Deals.DealProposalMessage;
+import data.Deals.DealResponseMessage;
+import data.Deals.DealResponseType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
@@ -50,6 +54,13 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     RentCalculationService rentCalculationService;
     @Autowired
     private CheatService cheatService;
+    @Autowired
+    private DealService dealService;
+
+    @PostConstruct
+    public void init() {
+        dealService.setGame(game);
+    }
 
     @Override
     public void afterConnectionEstablished(@NonNull WebSocketSession session) {
@@ -274,6 +285,38 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                     sendMessageToSession(session, jsonReply);
                     logger.info("Player " + pull.getPlayerId() + " received a drawn card");//bewusst geloggt aktuell
                     broadcastGameState();
+                }
+                return;
+            }
+            if (payload.contains("\"type\":\"DEAL_PROPOSAL\"")) {
+                DealProposalMessage deal = objectMapper.readValue(payload, DealProposalMessage.class);
+                logger.info("Received deal proposal from " + deal.getFromPlayerId());
+
+                WebSocketSession targetSession = findSessionByPlayerId(deal.getToPlayerId());
+                if (targetSession != null) {
+                    sendMessageToSession(targetSession, payload);
+                } else {
+                    logger.warning("Target player session not found for deal proposal");
+                }
+                return;
+            }
+
+            if (payload.contains("\"type\":\"DEAL_RESPONSE\"")) {
+                DealResponseMessage response = objectMapper.readValue(payload, DealResponseMessage.class);
+                logger.info("Received deal response: " + response.getResponseType()
+                        + " from " + response.getFromPlayerId()
+                        + " to " + response.getToPlayerId());
+
+                if (response.getResponseType() == DealResponseType.ACCEPT) {
+                    dealService.executeTrade(response);
+                    broadcastGameState();
+                }
+
+                WebSocketSession targetSession = findSessionByPlayerId(response.getToPlayerId());
+                if (targetSession != null) {
+                    sendMessageToSession(targetSession, payload);
+                } else {
+                    logger.warning("Target player session not found for deal response");
                 }
                 return;
             }
@@ -643,5 +686,18 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Error handling player landing: {0}", e.getMessage());
         }
+    }
+    private WebSocketSession findSessionByPlayerId(String playerId) {
+        for (Map.Entry<String, String> entry : sessionToUserId.entrySet()) {
+            if (entry.getValue().equals(playerId)) {
+                String sessionId = entry.getKey();
+                for (WebSocketSession session : sessions) {
+                    if (session.getId().equals(sessionId)) {
+                        return session;
+                    }
+                }
+            }
+        }
+        return null;
     }
 }

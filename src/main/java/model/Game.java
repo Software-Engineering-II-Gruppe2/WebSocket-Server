@@ -1,6 +1,11 @@
 package model;
 import java.util.Date;
+
+import at.aau.serg.monopoly.websoket.PropertyService;
+import at.aau.serg.monopoly.websoket.PropertyTransactionService;
 import lombok.Data;
+import lombok.Getter;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -13,6 +18,12 @@ public class Game {
     private int currentPlayerIndex;
     private Date startTime;
     private String winnerId;
+    @Getter
+    private final DiceManagerInterface diceManager = new DiceManager();
+    @Getter
+    private PropertyService propertyService;
+    @Getter
+    private PropertyTransactionService propertyTransactionService;
 
 
     public Game() {
@@ -80,14 +91,24 @@ public class Game {
     }
 
     public void nextPlayer() {
-        currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
-        players.get(currentPlayerIndex).setHasRolledThisTurn(false);
+        if (players.isEmpty()) return;
+
+        for (int i = 1; i <= players.size(); i++) {
+            int nextIndex = (currentPlayerIndex + i) % players.size();
+            Player next = players.get(nextIndex);
+            if (next.isConnected()) {
+                currentPlayerIndex = nextIndex;
+                next.setHasRolledThisTurn(false);
+                return;
+            }
+        }
+
     }
 
     public List<PlayerInfo> getPlayerInfo() {
         List<PlayerInfo> info = new ArrayList<>();
         for (Player player : players) {
-            info.add(new PlayerInfo(player.getId(), player.getName(), player.getMoney(), player.getPosition(), player.isInJail(), player.getJailTurns()));
+            info.add(new PlayerInfo(player.getId(), player.getName(), player.getMoney(), player.getPosition(), player.isInJail(), player.getJailTurns(), player.isBot()));
         }
         return info;
     }
@@ -207,6 +228,30 @@ public class Game {
             player.setJailTurns(2);
             player.setPosition(10);
         });
+    }
+
+    public void markPlayerDisconnected(String userId) {
+        getPlayerById(userId).ifPresent(player -> player.setConnected(false));
+    }
+
+    public void replaceDisconnectedWithBot(String userId) {
+        getPlayerById(userId).ifPresent(player -> {
+            if (!player.isConnected() && !player.isBot()) {
+                player.setBot(true);
+                player.setConnected(true);
+                player.setName(player.getName() + " 🤖"); // Optional: Name sichtbar markieren
+                System.out.println("Replaced disconnected player with bot: " + player.getId());
+            }
+        });
+    }
+
+
+    public void setPropertyService(PropertyService propertyService) {
+        this.propertyService = propertyService;
+    }
+
+    public void setPropertyTransactionService(PropertyTransactionService propertyTransactionService) {
+        this.propertyTransactionService = propertyTransactionService;
     }
 
 }

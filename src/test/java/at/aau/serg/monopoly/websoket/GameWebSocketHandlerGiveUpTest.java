@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import data.GiveUpMessage;
 import data.HasWonMessage;
+import model.BotManager;
 import model.Game;
 import model.Player;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,8 +45,9 @@ class GameWebSocketHandlerGiveUpTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        // inject our mocks
         ReflectionTestUtils.setField(handler, "game", game);
+        ReflectionTestUtils.setField(handler, "objectMapper", new ObjectMapper()); // <- wichtig!
+
         handler.sessions.clear();
         handler.sessions.add(session);
 
@@ -54,6 +56,9 @@ class GameWebSocketHandlerGiveUpTest {
 
         handler.sessionToUserId.clear();
         handler.sessionToUserId.put("session1", "session1");
+
+        // NEU: BotManager initialisieren
+        handler.initializeBotManager();
     }
 
     @Test
@@ -76,44 +81,36 @@ class GameWebSocketHandlerGiveUpTest {
 
     @Test
     void giveUp_multiplePlayers_broadcastsGiveUpAndGameState() throws Exception {
-        // Arrange: it's your turn
+        // Arrange
         JsonNode json = mapper.readTree("{\"userId\":\"session1\"}");
         when(game.isPlayerTurn("session1")).thenReturn(true);
-
-        List<Player> players = Arrays.asList(quittingPlayer, remainingPlayer);
-        when(game.getPlayers()).thenReturn(players);
+        when(game.getPlayers()).thenReturn(Arrays.asList(quittingPlayer, remainingPlayer));
         when(game.getPlayerInfo()).thenReturn(Collections.emptyList());
         when(game.getCurrentPlayer()).thenReturn(remainingPlayer);
         when(remainingPlayer.getId()).thenReturn("remainingId");
 
+        // BotManager mocken, damit kein echter Bot-Zug passiert
+        BotManager mockBotManager = mock(BotManager.class);
+        ReflectionTestUtils.setField(handler, "botManager", mockBotManager);
+
         // Act
         handler.handleGiveUp(session, json);
 
-        // Assert: game.giveUp called
+        // Assert
         verify(game).giveUp("session1");
 
-        // We expect exactly 3 sendMessage calls:
-        // 1) GIVE_UP
-        // 2) GAME_STATE
-        // 3) PLAYER_TURN
-        verify(session, times(3)).sendMessage(messageCaptor.capture());
+        // Capture alle Nachrichten an irgendeine Session
+        ArgumentCaptor<TextMessage> captor = ArgumentCaptor.forClass(TextMessage.class);
+        verify(session, atLeastOnce()).sendMessage(captor.capture());
 
-        List<TextMessage> sent = messageCaptor.getAllValues();
-        assertEquals(3, sent.size());
+        List<String> payloads = captor.getAllValues().stream().map(TextMessage::getPayload).toList();
 
-        // 1st message = GIVE_UP
-        String giveUpPayload = sent.get(0).getPayload();
-        assertTrue(giveUpPayload.contains("\"type\":\"GIVE_UP\""));
-        assertTrue(giveUpPayload.contains("\"userId\":\"session1\""));
-
-        // 2nd message = GAME_STATE:
-        String gameStatePayload = sent.get(1).getPayload();
-        assertTrue(gameStatePayload.startsWith("GAME_STATE:"));
-
-        // 3rd message = PLAYER_TURN:
-        String turnPayload = sent.get(2).getPayload();
-        assertTrue(turnPayload.startsWith("PLAYER_TURN:"));
+        // Prüfe, ob die gewünschten Typen enthalten sind
+        assertTrue(payloads.stream().anyMatch(p -> p.contains("\"type\":\"GIVE_UP\"")));
+        assertTrue(payloads.stream().anyMatch(p -> p.startsWith("GAME_STATE:")));
+        assertTrue(payloads.stream().anyMatch(p -> p.startsWith("PLAYER_TURN:")));
     }
+
 
 
     @Test

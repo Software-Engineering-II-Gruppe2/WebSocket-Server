@@ -7,10 +7,7 @@ import data.*;
 import data.deals.CounterProposalMessage;
 import jakarta.annotation.PostConstruct;
 import lombok.NonNull;
-import model.DiceManager;
-import model.DiceManagerInterface;
-import model.Game;
-import model.Player;
+import model.*;
 import model.properties.BaseProperty;
 import data.deals.DealProposalMessage;
 import data.deals.DealResponseMessage;
@@ -21,6 +18,7 @@ import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -58,10 +56,25 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     @Autowired
     private DealService dealService;
 
+
+    BotManager botManager;
+
     @PostConstruct
     public void init() {
         dealService.setGame(game);
+        game.setPropertyService(propertyService);
+        game.setPropertyTransactionService(propertyTransactionService);
+        initializeBotManager(); // <-- wichtig!
     }
+
+
+    public void initializeBotManager() {
+        this.botManager = new BotManager(game, objectMapper, new BotManager.BotCallback() {
+            @Override public void broadcast(String m) { broadcastMessage(m); }
+            @Override public void updateGameState() { broadcastGameState(); }
+        });
+    }
+
 
     @Override
     public void afterConnectionEstablished(@NonNull WebSocketSession session) {
@@ -81,6 +94,12 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 return;
             }
 
+            if (game.isStarted() && game.getPlayerById(userId).map(p -> !p.isConnected()).orElse(false)) {
+                sendMessageToSession(session, createJsonError("Rejoin not allowed. You have been disconnected."));
+                return;
+            }
+
+
             // Spieler mit Firebase-ID hinzufügen
             game.addPlayer(userId, name);
             sessionToUserId.put(session.getId(), userId);
@@ -91,6 +110,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             // Spielstart-Logik anpassen
             if (sessionToUserId.size() >= 2 && sessionToUserId.size() <= 4) {
                 startGame();
+
             }
 
             broadcastGameState();
@@ -417,14 +437,12 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                         if (!player.isInJail()) {
                             broadcastMessage("Player " + userId + " is released from jail!");
                         }
-                        // Always advance to next player after jail turn
-                        game.nextPlayer();
-                    } else {
-                        game.nextPlayer(); // Normal turn advancement
-                    }
-                }
 
-                broadcastGameState();
+                    } //else {
+                        //game.nextPlayer(); // Normal turn advancement
+                    //}
+                }
+                advanceToNextPlayer();
 
             } else if (payload.startsWith("MANUAL_ROLL:")) {
                 handleManualRoll(payload, userId, session);
@@ -432,8 +450,6 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 handleUpdateMoney(payload, userId);
             } else if (payload.startsWith("BUY_PROPERTY:")) {
                 handleBuyProperty(session, userId, payload);
-            } else if (payload.startsWith("SELL_PROPERTY:")) {
-                handleSellProperty(session, payload, userId);
             } else {
                 String safePayload = sanitizeForLog(payload);
                 logger.log(Level.INFO, "Received unknown message format: {0} from player {1}", new Object[]{safePayload, userId});//bewusst geloggt aktuell
@@ -449,17 +465,39 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(@NonNull WebSocketSession session, @NonNull CloseStatus status) {
         String userId = sessionToUserId.get(session.getId());
         if (userId != null) {
-            game.removePlayer(userId);
+            game.markPlayerDisconnected(userId);
+            game.replaceDisconnectedWithBot(userId); // Bot übernimmt intern dieselbe ID
+
             sessionToUserId.remove(session.getId());
-            broadcastMessage("Player left: " + userId + " (Total: " + sessions.size() + ")");
+            sessions.remove(session);
+
+            broadcastMessage("Player left: " + userId + " and was replaced by a bot.");
             broadcastGameState();
-            logger.log(Level.INFO, "Player disconnected: {0}", userId);//bewusst geloggt aktuell
+
+            logger.log(Level.INFO, "Player disconnected and replaced with bot: {0}", userId);
+
+            // Prüfen, ob der aktuelle Spieler gerade disconnected wurde
+            Player current = game.getCurrentPlayer();
+            if (current != null && current.getId().equals(userId)) {
+                new java.util.Timer().schedule(new java.util.TimerTask() {
+                    @Override
+                    public void run() {
+                        advanceToNextPlayer(); // Nächster Spieler oder Bot übernimmt
+                    }
+                }, 300);
+            }
         }
         sessions.remove(session);
     }
 
+
+
+
+
+
+
     private void broadcastMessage(String message) {
-        for (WebSocketSession session : sessions) {
+        for (WebSocketSession session : new ArrayList<>(sessions)) {
             try {
                 if (session.isOpen()) {
                     session.sendMessage(new TextMessage(message));
@@ -467,10 +505,12 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                     sessions.remove(session);
                 }
             } catch (Exception e) {
-                logger.log(Level.SEVERE, "Error sending message: {0}", e.getMessage());//bewusst geloggt aktuell
+                logger.log(Level.SEVERE, "Error sending message: {0}", e.getMessage());
+                sessions.remove(session);
             }
         }
     }
+
 
     void broadcastGameState() {
         try {
@@ -478,7 +518,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             broadcastMessage("GAME_STATE:" + gameState);
             broadcastMessage("PLAYER_TURN:" + game.getCurrentPlayer().getId());
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Error broadcasting game state: {0}", e.getMessage());//bewusst geloggt aktuell
+            logger.log(Level.SEVERE, "Error Fbroadcasting game state: {0}", e.getMessage());//bewusst geloggt aktuell
         }
     }
 
@@ -489,6 +529,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             broadcastMessage("Game started! " + sessions.size() + " players are connected.");
             logger.log(Level.INFO, "Game started with {0} players!", sessions.size());//bewusst geloggt aktuell
             game.start();
+            botManager.handleBotTurn();
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Error sending game state: {0}", e.getMessage());//bewusst geloggt aktuell
         }
@@ -668,6 +709,8 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                     quittingUserId);
 
             game.giveUp(quittingUserId);
+            botManager.handleBotTurn();
+
 
             // Do we have a winner already?
             if (game.getPlayers().size() == 1) {
@@ -681,11 +724,13 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 handleEndGame();
                 return;
             }
+            advanceToNextPlayer();
 
             GiveUpMessage msg = new GiveUpMessage(quittingUserId);
             String json = objectMapper.writeValueAsString(msg);
             broadcastMessage(json);
-            broadcastGameState();
+
+
 
         } catch (JsonProcessingException e) {
             logger.log(Level.SEVERE,
@@ -753,6 +798,16 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             logger.log(Level.SEVERE, "Error handling player landing: {0}", e.getMessage());
         }
     }
+
+    private void advanceToNextPlayer() {
+        game.nextPlayer();
+        broadcastGameState();
+        Player current = game.getCurrentPlayer();
+        if (current != null && current.isBot()) {
+            botManager.handleBotTurn();
+        }
+    }
+
     private WebSocketSession findSessionByPlayerId(String playerId) {
         for (Map.Entry<String, String> entry : sessionToUserId.entrySet()) {
             if (entry.getValue().equals(playerId)) {

@@ -48,7 +48,9 @@ class GameWebSocketHandlerTest {
     @BeforeEach
     void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
-        handler = new GameWebSocketHandler();
+         handler = new GameWebSocketHandler();
+        handler.initializeBotManager(); // in jedem relevanten Test
+
         handler.propertyService = mock(PropertyService.class);
         handler.rentCalculationService = mock(RentCalculationService.class);
         handler.rentCollectionService = mock(RentCollectionService.class);

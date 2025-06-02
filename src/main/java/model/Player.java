@@ -1,5 +1,6 @@
 package model;
 import lombok.Data;
+import lombok.Getter;
 import lombok.Setter;
 
 @Data
@@ -9,10 +10,13 @@ public class Player {
     private int money;
     private static final int STARTING_MONEY = 1500; // Standard Monopoly starting money
     private int position = 0; // Starting position
+    @Getter
+    private boolean connected= true;
     @Setter
     private boolean hasRolledThisTurn = false;
     private boolean inJail = false;
     private int jailTurns = 2;
+    private boolean isBot= false;
 
     public Player(String id, String name) {
         this.id = id;
@@ -44,5 +48,16 @@ public class Player {
                 inJail = false;
             }
         }
+    }
+
+    public void setConnected(boolean connected) {
+        this.connected = connected;
+    }
+    public boolean isBot() {
+        return isBot;
+    }
+
+    public void setBot(boolean bot) {
+        this.isBot = bot;
     }
 }

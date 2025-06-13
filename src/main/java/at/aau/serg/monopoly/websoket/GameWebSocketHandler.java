@@ -826,7 +826,11 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             // Check for tax squares
             if (position == 30) {
                 game.sendToJail(player.getId());
-                broadcastMessage("Player " + player.getId() + " goes to jail!");
+                ObjectNode jailMsg = objectMapper.createObjectNode();
+                jailMsg.put("type", "PLAYER_IN_JAIL");
+                jailMsg.put("playerId", player.getId());
+                broadcastMessage(objectMapper.writeValueAsString(jailMsg));
+
             }
             else if (position == 4) {  // Einkommensteuer
                 game.updatePlayerMoney(player.getId(), -200);  // Deduct money first

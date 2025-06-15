@@ -1,11 +1,17 @@
 package model;
 import java.util.Date;
+
+import at.aau.serg.monopoly.websoket.PropertyService;
+import at.aau.serg.monopoly.websoket.PropertyTransactionService;
 import data.PlayerInfo;
 import lombok.Data;
+import lombok.Getter;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Data
 public class Game {
@@ -13,7 +19,14 @@ public class Game {
     private boolean isStarted;
     private int currentPlayerIndex;
     private Date startTime;
+    private final ReentrantLock turnLock = new ReentrantLock();
     private String winnerId;
+    @Getter
+    private final DiceManagerInterface diceManager = new DiceManager();
+    @Getter
+    private PropertyService propertyService;
+    @Getter
+    private PropertyTransactionService propertyTransactionService;
 
 
     public Game() {
@@ -28,7 +41,7 @@ public class Game {
     }
 
     public void addPlayer(String id, String name) {
-        if(players.stream().noneMatch(p -> p.getId().equals(id))) {
+        if (players.stream().noneMatch(p -> p.getId().equals(id))) {
             players.add(new Player(id, name));
         }
     }
@@ -81,14 +94,29 @@ public class Game {
     }
 
     public void nextPlayer() {
-        currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
-        players.get(currentPlayerIndex).setHasRolledThisTurn(false);
+        if (players.isEmpty()) return;
+
+        int originalIndex = currentPlayerIndex;
+        for (int i = 1; i <= players.size(); i++) {
+            int nextIndex = (currentPlayerIndex + i) % players.size();
+            Player next = players.get(nextIndex);
+
+            if (next.isConnected() || next.isBot()) {
+                currentPlayerIndex = nextIndex;
+                next.setHasRolledThisTurn(false);
+                return;
+            }
+        }
+
+        // Falls kein gültiger Spieler gefunden wurde → Spiel beenden
+        System.out.println("No connected players or bots found – ending game.");
     }
+
 
     public List<PlayerInfo> getPlayerInfo() {
         List<PlayerInfo> info = new ArrayList<>();
         for (Player player : players) {
-            info.add(new PlayerInfo(player.getId(), player.getName(), player.getMoney(), player.getPosition(), player.isInJail(), player.getJailTurns()));
+            info.add(new PlayerInfo(player.getId(), player.getName(), player.getMoney(), player.getPosition(), player.isInJail(), player.getJailTurns(), player.isBot()));
         }
         return info;
     }
@@ -122,7 +150,7 @@ public class Game {
      * @param id The ID of the player to find.
      * @return If the player passes the Start field the method returns true, otherwise false.
      */
-    public boolean updatePlayerPosition(int roll, String id){
+    public boolean updatePlayerPosition(int roll, String id) {
         for (Player player : players) {
             if (player.getId().equals(id)) {
                 int oldPos = player.getPosition();
@@ -215,4 +243,95 @@ public class Game {
         });
     }
 
+    public void markPlayerDisconnected(String userId) {
+        getPlayerById(userId).ifPresent(player -> player.setConnected(false));
+    }
+
+    public void markPlayerConnected(String userId) {
+        getPlayerById(userId).ifPresent(player -> player.setConnected(true));
+    }
+
+
+    public void replaceDisconnectedWithBot(String userId) {
+        getPlayerById(userId).ifPresent(player -> {
+            if (!player.isConnected() && !player.isBot()) {
+                player.setBot(true);
+                player.setConnected(true);
+                System.out.println("Replaced disconnected player with bot: " + player.getId());
+            }
+        });
+    }
+
+
+    public void setPropertyService(PropertyService propertyService) {
+        this.propertyService = propertyService;
+    }
+
+    public void setPropertyTransactionService(PropertyTransactionService propertyTransactionService) {
+        this.propertyTransactionService = propertyTransactionService;
+    }
+
+    public int handleDiceRoll(String playerId) {
+        Optional<Player> opt = getPlayerById(playerId);
+        if (opt.isEmpty()) return -1;
+
+        Player p = opt.get();
+        int roll = diceManager.rollDices();
+        p.setHasRolledThisTurn(true);   //  ←  wichtig
+        updatePlayerPosition(roll, playerId);
+
+        return roll;
+    }
+    public void resetForNewMatch() {
+        players.forEach(p -> {
+            p.setPosition(0);
+            p.setMoney(1500);
+            p.setInJail(false);
+            p.setHasRolledThisTurn(false);
+            // … weitere Flags
+        });
+        currentPlayerIndex = 0;
+        isStarted = true;
+    }
+
+    public void reset() {
+        currentPlayerIndex = 0;
+        winnerId = null;
+        isStarted = false;
+        players.forEach(p -> {
+            p.setPosition(0);
+            p.setMoney(1500);
+            p.setInJail(false);
+            p.setJailTurns(0);
+            p.setConnected(true);   //jeder aktive Socket zählt wieder
+            p.setBot(false);
+            p.setHasRolledThisTurn(false);
+        });
+
+        // Alle Grundstücke freimachen
+
+
+        // Würfel zurücksetzen, Karten mischen, …
+        diceManager.initializeStandardDices();
+    }
+
+    public Player getNextPlayer() {
+        if (players.isEmpty()) {
+            throw new IllegalStateException("Keine Spieler im Spiel");
+        }
+        int size = players.size();
+        for (int i = 1; i <= size; i++) {
+            int nextIndex = (currentPlayerIndex + i) % size;
+            Player candidate = players.get(nextIndex);
+            if (candidate.isConnected() || candidate.isBot()) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("Kein gültiger nächster Spieler gefunden");
+    }
 }
+
+
+
+
+

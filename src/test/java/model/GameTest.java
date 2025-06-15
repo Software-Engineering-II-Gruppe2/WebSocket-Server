@@ -484,4 +484,46 @@ class GameTest {
                 .containsExactly("B");
         assertThat(game.getCurrentPlayer().getId()).isEqualTo("B");
     }
+    @Test
+    void testReplaceDisconnectedWithBot() {
+        game.addPlayer("A", "Alice");
+        assertFalse(game.getPlayerById("A").get().isBot());
+
+        game.markPlayerDisconnected("A");
+        game.replaceDisconnectedWithBot("A");
+
+        Optional<Player> bot = game.getPlayerById("A");
+        assertTrue(bot.isPresent());
+        assertTrue(bot.get().isBot());
+    }
+
+
+    @Test
+    void testReconnectMarksPlayerAsConnected() {
+        game.addPlayer("A", "Alice");
+        game.markPlayerDisconnected("A");
+
+        // Spieler sollte jetzt nicht mehr verbunden sein
+        assertFalse(game.getPlayerById("A").get().isConnected());
+
+        game.markPlayerConnected("A");
+
+        // Spieler ist wieder verbunden
+        assertTrue(game.getPlayerById("A").get().isConnected());
+    }
+
+
+
+    @Test
+    void testStartBotTurnSkipsToNextIfBot() {
+        game.addPlayer("A", "Alice");
+        game.addPlayer("B", "BotB");
+        game.getPlayerById("B").get().setBot(true);
+
+        game.setCurrentPlayerIndex(1); // Bot ist dran
+        game.nextPlayer();
+
+        assertEquals("A", game.getCurrentPlayer().getId());
+    }
+
 }

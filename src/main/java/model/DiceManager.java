@@ -14,6 +14,8 @@ public class DiceManager implements DiceManagerInterface {
     }
 
     public void initializeStandardDices() {
+        dices.clear();
+        rollHistory.clear();
         Dice firstDice = new Dice(6);
         Dice secondDice = new Dice(6);
         dices.add(firstDice);

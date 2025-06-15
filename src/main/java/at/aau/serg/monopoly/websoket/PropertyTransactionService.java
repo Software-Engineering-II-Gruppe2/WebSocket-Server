@@ -148,4 +148,7 @@ public class PropertyTransactionService {
                 .findFirst()
                 .orElse(null);
     }
+    public BaseProperty findPropertyByPosition(int position) {
+        return propertyService.getPropertyByPosition(position);   // liefert null, falls nichts dort liegt
+    }
 }

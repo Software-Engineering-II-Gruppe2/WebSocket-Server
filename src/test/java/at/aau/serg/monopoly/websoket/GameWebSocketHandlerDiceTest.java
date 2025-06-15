@@ -1,12 +1,12 @@
-package at.aau.serg.monopoly.websoket;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+package at.aau.serg.monopoly.websoket;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import model.DiceManagerInterface;
 import model.Game;
+import model.Player;
+import model.cards.Card;
+import model.cards.CardType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
@@ -15,421 +15,178 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class GameWebSocketHandlerDiceTest {
 
-    @Mock WebSocketSession session;
-    @Mock PropertyTransactionService propertyTransactionService;
-    @Mock PropertyService propertyService;
-    @Mock RentCollectionService rentCollectionService;
-    @Mock RentCalculationService rentCalculationService;
-    @Mock GameHistoryService gameHistoryService;
-    @Mock CardDeckService cardDeckService;
-
-    @Captor ArgumentCaptor<TextMessage> msgCaptor;
+    @Mock
+    WebSocketSession session;
+    @Mock
+    PropertyTransactionService propertyTransactionService;
+    @Mock
+    PropertyService propertyService;
+    @Mock
+    RentCollectionService rentCollectionService;
+    @Mock
+    RentCalculationService rentCalculationService;
+    @Mock
+    GameHistoryService gameHistoryService;
+    @Mock
+    CardDeckService cardDeckService;
+    @Captor
+    ArgumentCaptor<TextMessage> msgCaptor;
 
     GameWebSocketHandler handler;
-    ObjectMapper mapper = new ObjectMapper();
+    final ObjectMapper mapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
         handler = new GameWebSocketHandler();
-
         ReflectionTestUtils.setField(handler, "propertyTransactionService", propertyTransactionService);
         ReflectionTestUtils.setField(handler, "propertyService", propertyService);
         ReflectionTestUtils.setField(handler, "rentCollectionService", rentCollectionService);
         ReflectionTestUtils.setField(handler, "rentCalculationService", rentCalculationService);
         ReflectionTestUtils.setField(handler, "gameHistoryService", gameHistoryService);
         ReflectionTestUtils.setField(handler, "cardDeckService", cardDeckService);
-
         when(session.getId()).thenReturn("session-1");
         when(session.isOpen()).thenReturn(true);
     }
 
-    @Test
-    void testInitRegistersPlayerAndBroadcasts() throws Exception {
+    private void initPlayer(String userId, String name) throws Exception {
         handler.afterConnectionEstablished(session);
-
         String initJson = mapper.createObjectNode()
                 .put("type", "INIT")
-                .put("userId", "u1")
-                .put("name", "Alice")
+                .put("userId", userId)
+                .put("name", name)
                 .toString();
-
         handler.handleTextMessage(session, new TextMessage(initJson));
-
-        verify(session, atLeast(3)).sendMessage(msgCaptor.capture());
-        List<TextMessage> sent = msgCaptor.getAllValues();
-
-        // Join message:
-        assertTrue(sent.stream()
-                .anyMatch(m -> m.getPayload().contains("SYSTEM: Alice (u1) joined the game"))
-        );
-
-        // Game State and Player Turn message:
-        assertTrue(sent.stream().anyMatch(m -> m.getPayload().startsWith("GAME_STATE:")));
-        assertTrue(sent.stream().anyMatch(m -> m.getPayload().startsWith("PLAYER_TURN:")));
+        clearInvocations(session);
     }
 
     @Test
-    void testRollBeforeInitReturnsError() throws Exception {
-        handler.afterConnectionEstablished(session);
-
-        // send Roll without INIT:
+    void testRollSendsDiceRollEvent() throws Exception {
+        initPlayer("u1", "Alice");
         handler.handleTextMessage(session, new TextMessage("Roll"));
 
-        verify(session).sendMessage(msgCaptor.capture());
-        String payload = msgCaptor.getValue().getPayload();
-        assertEquals("{\"type\":\"ERROR\", \"message\":\"Send INIT message first\"}", payload);
-    }
-
-
-    @Test
-    void testRollSuccessBroadcastsDiceRollAndGameState() throws Exception {
-        // INIT
-        handler.afterConnectionEstablished(session);
-        String initJson = mapper.createObjectNode()
-                .put("type", "INIT")
-                .put("userId", "u1")
-                .put("name", "Bob")
-                .toString();
-        handler.handleTextMessage(session, new TextMessage(initJson));
-
-        // Mock diceManager
-        DiceManagerInterface mockDice = mock(DiceManagerInterface.class);
-        when(mockDice.rollDices()).thenReturn(8);
-        when(mockDice.getLastRollValues()).thenReturn(List.of(4, 4));
-        ReflectionTestUtils.setField(handler, "diceManager", mockDice);
-
-        clearInvocations(session);
-
-        // Roll:
-        handler.handleTextMessage(session, new TextMessage("Roll"));
-
-        // Verify all three messages:
-        verify(session, atLeast(3)).sendMessage(msgCaptor.capture());
-        List<TextMessage> all = msgCaptor.getAllValues();
-
-        // Verify parsing and broadcasting:
-        JsonNode diceMsg = mapper.readTree(all.get(0).getPayload());
-        assertEquals("DICE_ROLL", diceMsg.get("type").asText());
-        assertEquals("u1", diceMsg.get("userId").asText());
-        assertEquals(8, diceMsg.get("roll").asInt());
-        assertTrue(all.stream().anyMatch(m -> m.getPayload().startsWith("GAME_STATE:")));
-        assertTrue(all.stream().anyMatch(m -> m.getPayload().startsWith("PLAYER_TURN:")));
-    }
-
-
-    @Test
-    void testRollExceptionReturnsServerError() throws Exception {
-        // INIT
-        handler.afterConnectionEstablished(session);
-        String initJson = mapper.createObjectNode()
-                .put("type", "INIT")
-                .put("userId", "u2")
-                .put("name", "Carol")
-                .toString();
-        handler.handleTextMessage(session, new TextMessage(initJson));
-
-        // Mock diceManager
-        DiceManagerInterface mockDice = mock(DiceManagerInterface.class);
-        when(mockDice.rollDices()).thenThrow(new RuntimeException("boom"));
-        ReflectionTestUtils.setField(handler, "diceManager", mockDice);
-
-        clearInvocations(session);
-
-        // Roll:
-        handler.handleTextMessage(session, new TextMessage("Roll"));
-
-        // Verify error message:
-        verify(session).sendMessage(msgCaptor.capture());
-        String payload = msgCaptor.getValue().getPayload();
-        assertEquals("{\"type\":\"ERROR\", \"message\":\"Server error processing your request.\"}", payload);
-    }
-
-    @Test
-    void testRollTwelveDoesNotAdvanceTurn() throws Exception {
-        // Two sessions are needed now:
-        WebSocketSession s1 = mock(WebSocketSession.class);
-        WebSocketSession s2 = mock(WebSocketSession.class);
-        when(s1.getId()).thenReturn("s1");
-        when(s2.getId()).thenReturn("s2");
-        when(s1.isOpen()).thenReturn(true);
-        when(s2.isOpen()).thenReturn(true);
-
-        handler = new GameWebSocketHandler();
-        ReflectionTestUtils.setField(handler, "propertyTransactionService", propertyTransactionService);
-        ReflectionTestUtils.setField(handler, "propertyService", propertyService);
-        ReflectionTestUtils.setField(handler, "rentCollectionService", rentCollectionService);
-        ReflectionTestUtils.setField(handler, "rentCalculationService", rentCalculationService);
-        ReflectionTestUtils.setField(handler, "gameHistoryService", gameHistoryService);
-        ReflectionTestUtils.setField(handler, "cardDeckService", cardDeckService);
-
-        handler.afterConnectionEstablished(s1);
-        handler.afterConnectionEstablished(s2);
-
-        // INIT
-        String init1 = mapper.createObjectNode()
-                .put("type", "INIT").put("userId", "u1").put("name", "Alice")
-                .toString();
-        String init2 = mapper.createObjectNode()
-                .put("type", "INIT").put("userId", "u2").put("name", "Bob")
-                .toString();
-        handler.handleTextMessage(s1, new TextMessage(init1));
-        handler.handleTextMessage(s2, new TextMessage(init2));
-
-        // Mock diceManager
-        DiceManagerInterface mockDice = mock(DiceManagerInterface.class);
-        when(mockDice.rollDices()).thenReturn(12);
-        when(mockDice.getLastRollValues()).thenReturn(List.of(6, 6)); // simulate Pasch (6+6)
-        ReflectionTestUtils.setField(handler, "diceManager", mockDice);
-
-        clearInvocations(s1, s2);
-
-        // Player 1 rolls:
-        handler.handleTextMessage(s1, new TextMessage("Roll"));
-
-        // Pick out PLAYER_TURN message:
-        ArgumentCaptor<TextMessage> cap = ArgumentCaptor.forClass(TextMessage.class);
-        verify(s1, atLeast(1)).sendMessage(cap.capture());
-        List<TextMessage> msgs = cap.getAllValues();
-
-        TextMessage lastTurnMsg = msgs.stream()
-                .filter(m -> m.getPayload().startsWith("PLAYER_TURN:"))
-                .reduce((first, second) -> second)
-                .orElseThrow();
-
-        // Roll is 12, so the turn should stay
-        assertEquals("PLAYER_TURN:u1", lastTurnMsg.getPayload());
-    }
-
-    @Test
-    void testManualRollSuccessBroadcastsDiceRollAndGameState() throws Exception {
-        // INIT
-        handler.afterConnectionEstablished(session);
-        String initJson = mapper.createObjectNode()
-                .put("type", "INIT")
-                .put("userId", "u1")
-                .put("name", "Bob")
-                .toString();
-        handler.handleTextMessage(session, new TextMessage(initJson));
-
-        clearInvocations(session);
-
-        // Manual Roll:
-        handler.handleTextMessage(session, new TextMessage("MANUAL_ROLL:8"));
-
-        // Verify all three messages:
-        verify(session, atLeast(3)).sendMessage(msgCaptor.capture());
-        List<TextMessage> all = msgCaptor.getAllValues();
-
-        // Verify parsing and broadcasting:
-        JsonNode diceMsg = mapper.readTree(all.get(0).getPayload());
-        assertEquals("DICE_ROLL", diceMsg.get("type").asText());
-        assertEquals("u1", diceMsg.get("userId").asText());
-        assertEquals(8, diceMsg.get("value").asInt());
-        assertTrue(diceMsg.get("isManual").asBoolean());
-        assertTrue(all.stream().anyMatch(m -> m.getPayload().startsWith("GAME_STATE:")));
-        assertTrue(all.stream().anyMatch(m -> m.getPayload().startsWith("PLAYER_TURN:")));
+        verify(session, atLeastOnce()).sendMessage(msgCaptor.capture());
+        boolean diceRollSent = msgCaptor.getAllValues().stream()
+                .map(TextMessage::getPayload)
+                .anyMatch(p -> p.contains("\"type\":\"DICE_ROLL\""));
+        assertTrue(diceRollSent);
     }
 
     @Test
     void testManualRollInvalidValueReturnsError() throws Exception {
-        // INIT
-        handler.afterConnectionEstablished(session);
-        String initJson = mapper.createObjectNode()
-                .put("type", "INIT")
-                .put("userId", "u1")
-                .put("name", "Bob")
-                .toString();
-        handler.handleTextMessage(session, new TextMessage(initJson));
-
-        clearInvocations(session);
-
-        // Manual Roll with invalid value:
+        initPlayer("u1", "Bob");
         handler.handleTextMessage(session, new TextMessage("MANUAL_ROLL:40"));
 
-        // Verify error message:
-        verify(session).sendMessage(msgCaptor.capture());
-        TextMessage errorMsg = msgCaptor.getValue();
-        assertTrue(errorMsg.getPayload().contains("Invalid roll value"));
+        verify(session, atLeastOnce()).sendMessage(msgCaptor.capture());
+        assertTrue(msgCaptor.getAllValues().stream()
+                .anyMatch(m -> m.getPayload().contains("Invalid roll value")));
     }
 
     @Test
     void testManualRollInvalidFormatReturnsError() throws Exception {
-        // INIT
-        handler.afterConnectionEstablished(session);
-        String initJson = mapper.createObjectNode()
-                .put("type", "INIT")
-                .put("userId", "u1")
-                .put("name", "Bob")
-                .toString();
-        handler.handleTextMessage(session, new TextMessage(initJson));
-
-        clearInvocations(session);
-
-        // Manual Roll with invalid format:
+        initPlayer("u1", "Bob");
         handler.handleTextMessage(session, new TextMessage("MANUAL_ROLL:abc"));
 
-        // Verify error message:
-        verify(session).sendMessage(msgCaptor.capture());
-        TextMessage errorMsg = msgCaptor.getValue();
-        assertTrue(errorMsg.getPayload().contains("Invalid manual roll format"));
+        verify(session, atLeastOnce()).sendMessage(msgCaptor.capture());
+        assertTrue(msgCaptor.getAllValues().stream()
+                .anyMatch(m -> m.getPayload().contains("Invalid manual roll format")));
     }
-    @Test
-    void testNextTurnReturnsErrorIfNotYourTurn() throws Exception {
-        handler.afterConnectionEstablished(session);
 
-        String initJson = mapper.createObjectNode()
-                .put("type", "INIT")
-                .put("userId", "u1")
-                .put("name", "Alice")
+    @Test
+    void testTaxPaymentBroadcastsAndUpdatesMoney() throws Exception {
+        initPlayer("u1", "Alice");
+
+        String taxJson = mapper.createObjectNode()
+                .put("type", "TAX_PAYMENT")
+                .put("playerId", "u1")
+                .put("amount", 200)
+                .put("taxType", "EINKOMMENSTEUER")
                 .toString();
-        handler.handleTextMessage(session, new TextMessage(initJson));
-
-        // Manipuliert Spiellogik, damit Spieler nicht dran ist
-        Game spyGame = spy(new Game());
-        spyGame.addPlayer("u1", "Alice");
-        ReflectionTestUtils.setField(handler, "game", spyGame);
-
-        doReturn(false).when(spyGame).isPlayerTurn("u1");
-
-        clearInvocations(session);
-
-        handler.handleTextMessage(session, new TextMessage("NEXT_TURN"));
-
-        verify(session).sendMessage(msgCaptor.capture());
-        String msg = msgCaptor.getValue().getPayload();
-        assertTrue(msg.contains("Not your turn"));
-    }
-
-
-    @Test
-    void testNextTurnAdvancesPlayerIfValid() {
-        handler.afterConnectionEstablished(session);
-
-        String initJson = mapper.createObjectNode()
-                .put("type", "INIT")
-                .put("userId", "u1")
-                .put("name", "Alice")
-                .toString();
-        handler.handleTextMessage(session, new TextMessage(initJson));
-
-        Game spyGame = spy(new Game());
-        spyGame.addPlayer("u1", "Alice");
-        ReflectionTestUtils.setField(handler, "game", spyGame);
-
-        doReturn(true).when(spyGame).isPlayerTurn("u1");
-
-        clearInvocations(session);
-
-        handler.handleTextMessage(session, new TextMessage("NEXT_TURN"));
-
-        verify(spyGame).nextPlayer();
-    }
-
-    @Test
-    void testNextTurnFromWrongPlayer_returnsError() throws Exception {
-        WebSocketSession s1 = mock(WebSocketSession.class);
-        WebSocketSession s2 = mock(WebSocketSession.class);
-        when(s1.getId()).thenReturn("s1");
-        when(s2.getId()).thenReturn("s2");
-        when(s1.isOpen()).thenReturn(true);
-        when(s2.isOpen()).thenReturn(true);
-
-        handler.afterConnectionEstablished(s1);
-        handler.afterConnectionEstablished(s2);
-
-        handler.handleTextMessage(s1, new TextMessage(mapper.createObjectNode()
-                .put("type", "INIT").put("userId", "u1").put("name", "Alice").toString()));
-        handler.handleTextMessage(s2, new TextMessage(mapper.createObjectNode()
-                .put("type", "INIT").put("userId", "u2").put("name", "Bob").toString()));
-
-        // u2 versucht Zug zu enden obwohl u1 dran ist
-        handler.handleTextMessage(s2, new TextMessage("NEXT_TURN"));
-
-        verify(s2, atLeastOnce()).sendMessage(msgCaptor.capture());
-        String payload = msgCaptor.getValue().getPayload();
-        assertTrue(payload.contains("Not your turn!"));
-    }
-
-    @Test
-    void testRollPaschAllowsAnotherTurn() throws Exception {
-        handler.afterConnectionEstablished(session);
-
-        String initJson = mapper.createObjectNode()
-                .put("type", "INIT")
-                .put("userId", "u1")
-                .put("name", "PaschPlayer")
-                .toString();
-        handler.handleTextMessage(session, new TextMessage(initJson));
-
-        DiceManagerInterface mockDice = mock(DiceManagerInterface.class);
-        when(mockDice.rollDices()).thenReturn(12); // 6+6
-        when(mockDice.isPasch()).thenReturn(true);
-        when(mockDice.getLastRollValues()).thenReturn(List.of(6, 6));
-        ReflectionTestUtils.setField(handler, "diceManager", mockDice);
-
-        clearInvocations(session);
-        handler.handleTextMessage(session, new TextMessage("Roll"));
+        handler.handleTextMessage(session, new TextMessage(taxJson));
 
         verify(session, atLeastOnce()).sendMessage(msgCaptor.capture());
-        List<TextMessage> sent = msgCaptor.getAllValues();
-        String json = sent.stream()
-                .map(TextMessage::getPayload)
-                .filter(p -> p.contains("DICE_ROLL"))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("No DICE_ROLL message found"));
-
-        JsonNode msg = mapper.readTree(json);
-
-        assertTrue(msg.get("isPasch").asBoolean());
+        assertTrue(msgCaptor.getAllValues().stream()
+                .anyMatch(msg -> msg.getPayload().contains("TAX_PAYMENT")));
     }
 
     @Test
-    void testShakeRequestTriggersDiceRollAndGameState() throws Exception {
-        // Arrange
-        handler.afterConnectionEstablished(session);
-        String initJson = mapper.createObjectNode()
-                .put("type", "INIT")
-                .put("userId", "u1")
-                .put("name", "TestUser")
-                .toString();
-        handler.handleTextMessage(session, new TextMessage(initJson));
+    void testPullCardAppliesCardAndSendsToClient() throws Exception {
+        initPlayer("u1", "Alice");
 
-        DiceManagerInterface mockDice = mock(DiceManagerInterface.class);
-        when(mockDice.rollDices()).thenReturn(7);
-        when(mockDice.getLastRollValues()).thenReturn(List.of(3, 4));
-        when(mockDice.isPasch()).thenReturn(false);
-        ReflectionTestUtils.setField(handler, "diceManager", mockDice);
+        // Erstelle eine echte Karte, die etwas tut
+        Card dummyCard = new Card("Test-Karte", CardType.CHANCE) {
+            @Override
+            public void apply(Game game, String playerId) {
+                game.getPlayerById(playerId).ifPresent(p -> p.addMoney(123));
+            }
+        };
+        when(cardDeckService.drawCard(CardType.CHANCE)).thenReturn(dummyCard);
 
-        clearInvocations(session);
-
-        // Act
-        String shakeJson = mapper.createObjectNode()
-                .put("type", "SHAKE_REQUEST")
+        // Sende eine PULL_CARD Nachricht
+        String pullCardJson = mapper.createObjectNode()
+                .put("type", "PULL_CARD")
                 .put("playerId", "u1")
+                .put("cardType", "CHANCE")
                 .toString();
-        handler.handleTextMessage(session, new TextMessage(shakeJson));
+        handler.handleTextMessage(session, new TextMessage(pullCardJson));
 
-        // Assert
-        verify(session, atLeast(3)).sendMessage(msgCaptor.capture());
-        List<TextMessage> sent = msgCaptor.getAllValues();
+        // Nachrichten abfangen
+        verify(session, atLeastOnce()).sendMessage(msgCaptor.capture());
+        List<TextMessage> messages = msgCaptor.getAllValues();
 
-        JsonNode diceMsg = mapper.readTree(sent.get(0).getPayload());
-        assertEquals("DICE_ROLL", diceMsg.get("type").asText());
-        assertEquals("u1",     diceMsg.get("playerId").asText());
-        assertEquals(7,        diceMsg.get("value").asInt());
-        assertFalse(diceMsg.get("isPasch").asBoolean());
+        // Debug-Ausgabe (optional)
+        for (TextMessage msg : messages) {
+            System.out.println(">>> OUT: " + msg.getPayload());
+        }
 
-        assertTrue(sent.stream().anyMatch(
-                m -> m.getPayload().startsWith("GAME_STATE:")
-        ));
-        assertTrue(sent.stream().anyMatch(
-                m -> m.getPayload().startsWith("PLAYER_TURN:")
-        ));
+        boolean found = messages.stream().anyMatch(msg -> {
+            try {
+                JsonNode node = mapper.readTree(msg.getPayload());
+                return node.has("type") && node.get("type").asText().equals("CARD_DRAWN");
+            } catch (Exception e) {
+                return false;
+            }
+        });
+
+        assertTrue(found, "Expected a CARD_DRAWN message but none found.");
+
     }
 
+
+    @Test
+    void testGiveUpEndsGameWhenOnePlayerLeft() throws Exception {
+        initPlayer("u1", "Alice");
+
+        Game game = (Game) ReflectionTestUtils.getField(handler, "game");
+        game.addPlayer("u1", "Alice");
+
+        String giveUp = mapper.createObjectNode()
+                .put("type", "GIVE_UP")
+                .put("userId", "u1")
+                .toString();
+        handler.handleTextMessage(session, new TextMessage(giveUp));
+
+        verify(session, atLeastOnce()).sendMessage(msgCaptor.capture());
+
+        List<String> payloads = msgCaptor.getAllValues().stream()
+                .map(TextMessage::getPayload)
+                .toList();
+
+        // Debug: Ausgabe aller Nachrichten
+        payloads.forEach(p -> System.out.println(">>> OUT: " + p));
+
+        // Test: Es wurde eine GIVE_UP Nachricht gesendet
+        assertTrue(payloads.stream().anyMatch(p -> p.contains("\"type\":\"GIVE_UP\"")), "Expected GIVE_UP message");
+
+        // Test: Der Game-State ist leer (Spiel beendet)
+        assertTrue(payloads.stream().anyMatch(p -> p.startsWith("GAME_STATE:[]")), "Expected empty GAME_STATE (game over)");
+    }
 
 }

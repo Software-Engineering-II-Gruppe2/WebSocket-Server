@@ -115,5 +115,14 @@ public class PropertyService {
                 .findFirst()
                 .orElse(null);
     }
+
+    public void resetBoardOwnership() {
+        houseableProperties.forEach(p -> {
+            p.setOwnerId(null);
+            p.setMortgaged(false);  // falls vorhanden
+        });
+        trainStations.forEach(ts -> ts.setOwnerId(null));
+        utilities.forEach(u -> u.setOwnerId(null));
+    }
 }
 

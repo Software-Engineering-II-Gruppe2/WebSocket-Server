@@ -568,7 +568,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
 
     private void handleDiceRoll(WebSocketSession session, String userId) throws JsonProcessingException {
 
-        /*  1. Gültigkeits-Checks  */
+        /* 1 ─ Gültigkeits-Checks */
         if (!game.isPlayerTurn(userId)) {
             sendMessageToSession(session, createJsonError("Not your turn!"));
             return;
@@ -587,34 +587,34 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        /* ── 2. Würfeln über Game  */
-        int roll = game.handleDiceRoll(userId);               // zentrales Handling
-        boolean pasch = game.getDiceManager().isPasch();
-        if (game.isPlayerTurn(userId)) {
+        /* 2 ─ Würfeln + Spiellogik im Model */
+        Game.DiceRollResult res = game.handleDiceRoll(userId);   // << einziges Model-Call
+        int     roll     = res.roll();
+        boolean pasch    = res.pasch();
+        boolean passedGo = res.passedGo();
+
+        if (game.isPlayerTurn(userId)) {            // Timer neu starten
             refreshTurnTimer(userId);
         }
 
-        // Bei Pasch darf noch einmal gewürfelt werden
-        if (pasch) {
-            player.setHasRolledThisTurn(false);
-        }
-
-        /* ── 3. Nachricht an alle Clients  */
+        /* 3 ─ Broadcast DICE_ROLL */
         DiceRollMessage drm = new DiceRollMessage(
                 userId,
                 roll,
-                /* isManual  = */ false,
-                /* pasch     = */ pasch
+                /* isManual */ false,
+                /* pasch     */ pasch
         );
-        String json = objectMapper.writeValueAsString(drm);
-        broadcastMessage(json);
+        broadcastMessage(objectMapper.writeValueAsString(drm));
 
-        // Update Position and broadcast Game-State:
-        if (game.updatePlayerPosition(roll, userId)) {
-            broadcastMessage(PLAYER_PREFIX + userId + " passed GO and collected €200");
+        /* 4 ─ GO-Meldung, falls nötig */
+        if (passedGo) {
+            broadcastMessage("Player " + userId + " passed GO and collected €200");
         }
+
+        /* 5 ─ Feldaktionen (Miete, Steuer, Karten …) */
         handlePlayerLanding(player);
     }
+
 
     private void broadcastMessage(String message) {
         for (WebSocketSession session : sessions) {

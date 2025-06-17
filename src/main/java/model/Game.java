@@ -29,6 +29,7 @@ public class Game {
     private PropertyService propertyService;
     @Getter
     private PropertyTransactionService propertyTransactionService;
+    public record DiceRollResult(int roll, boolean passedGo, boolean pasch) {}
 
 
     public Game() {
@@ -274,16 +275,16 @@ public class Game {
         this.propertyTransactionService = propertyTransactionService;
     }
 
-    public int handleDiceRoll(String playerId) {
-        Optional<Player> opt = getPlayerById(playerId);
-        if (opt.isEmpty()) return -1;
-
-        Player p = opt.get();
+    public DiceRollResult handleDiceRoll(String playerId) {
         int roll = diceManager.rollDices();
-        p.setHasRolledThisTurn(true);   //  ←  wichtig
-        updatePlayerPosition(roll, playerId);
+        Player p = getPlayerById(playerId).orElseThrow();
+        p.setHasRolledThisTurn(true);
 
-        return roll;
+        boolean pasch     = diceManager.isPasch();
+        boolean passedGo  = updatePlayerPosition(roll, playerId);
+
+        if (pasch) p.setHasRolledThisTurn(false);
+        return new DiceRollResult(roll, passedGo, pasch);
     }
     public void resetForNewMatch() {
         players.forEach(p -> {

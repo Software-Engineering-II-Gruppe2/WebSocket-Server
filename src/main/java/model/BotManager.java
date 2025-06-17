@@ -101,19 +101,21 @@ public class BotManager {
 
     /** Ein *vollständiger* Bot-Zug (würfeln, ziehen, kaufen, evtl. Ende). */
     private void doFullMove(Player bot) throws JsonProcessingException {
+
         if (bot.isInJail()) {
-            handleJailTurn(bot);
+            handleJailTurn(bot);   // unten ändern wir das ebenfalls
             return;
         }
 
         log.info(() -> "Bot-Turn für " + bot.getName());
 
-        // 1) Würfeln
-        DiceManagerInterface dm = game.getDiceManager();
-        int roll      = dm.rollDices();
-        boolean pasch = dm.isPasch();
+        /* 1 ─ Würfeln + Positionslogik einmalig im Model */
+        Game.DiceRollResult res = game.handleDiceRoll(bot.getId());
+        int     roll     = res.roll();
+        boolean pasch    = res.pasch();
+        boolean passedGo = res.passedGo();
 
-        // 2) Broadcast Roll
+        /* 2 ─ Broadcast des Wurfs */
         ObjectNode rollMsg = mapper.createObjectNode();
         rollMsg.put("type",     "DICE_ROLL");
         rollMsg.put("playerId", bot.getId());
@@ -122,23 +124,24 @@ public class BotManager {
         rollMsg.put("isPasch",  pasch);
         cb.broadcast(mapper.writeValueAsString(rollMsg));
 
-        log.info(() -> " → Würfel: " + dm.getLastRollValues() + (pasch ? " (Pasch)" : ""));
+        log.info(() -> " → Würfel: " + roll +
+                " (" + (pasch ? "Pasch" : "Summe") + ")");
 
-        // 3) Position + Los
-        boolean passedGo = game.updatePlayerPosition(roll, bot.getId());
+        /* 3 ─ GO-Nachricht */
         if (passedGo) {
-            cb.broadcast("SYSTEM: " + bot.getName() + " passed GO and collected €200");
+            cb.broadcast("SYSTEM: " + bot.getName() +
+                    " passed GO and collected €200");
         }
 
-        // 4) Property-Kauf
+        /* 4 ─ Grundstück kaufen */
         tryBuyCurrentField(bot);
 
-        // 5) Status-Update
+        /* 5 ─ Status + Bankrott-Check */
         bot.setHasRolledThisTurn(true);
         cb.updateGameState();
         cb.checkBankruptcy();
 
-        // 6) Pasch? Nochmal werfen…
+        /* 6 ─ Pasch? = sofort neuer Wurf */
         if (pasch) {
             bot.setHasRolledThisTurn(false);
             cb.updateGameState();
@@ -146,22 +149,16 @@ public class BotManager {
             return;
         }
 
-        // 7) reguläres Zugende: auf nächsten Spieler wechseln
-        //    - Wenn der nächste Spieler ein Bot ist: mit Delay
-        //    - Sonst sofort und Spielstand pushen, damit UI umschaltet
-        Player next = game.getNextPlayer();  // assume getNextPlayer() liefert das Player-Objekt nach dem current
+        /* 7 ─ Zugende */
+        Player next = game.getNextPlayer();
         if (next.isBot()) {
-            exec.schedule(
-                    () -> {
-                        cb.advanceToNextPlayer();
-                        // der Bot-Thread kümmert sich dann selbst um den nächsten Bot-Zug
-                    },
-                    1, TimeUnit.SECONDS
-            );
+            exec.schedule(() -> {
+                cb.advanceToNextPlayer();
+                /* Bot startet sich dann selbst */
+            }, 1, TimeUnit.SECONDS);
         } else {
-            // sofort zum Menschen weitergeben
             cb.advanceToNextPlayer();
-            cb.updateGameState(); // damit der Client sieht, dass er nun an der Reihe ist
+            cb.updateGameState();
         }
     }
 
@@ -208,10 +205,10 @@ public class BotManager {
     /** Bot-Zug im Gefängnis */
     private void handleJailTurn(Player bot) throws JsonProcessingException {
 
-        /* 1) Würfeln und Ergebnis an alle melden ---------- */
-        DiceManagerInterface dm = game.getDiceManager();
-        int  roll  = dm.rollDices();
-        boolean pasch = dm.isPasch();
+
+        Game.DiceRollResult res = game.handleDiceRoll(bot.getId());
+        int roll = res.roll();
+        boolean pasch = res.pasch();
 
         ObjectNode msg = mapper.createObjectNode();
         msg.put("type",     "DICE_ROLL");

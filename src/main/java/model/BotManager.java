@@ -99,23 +99,22 @@ public class BotManager {
         }
     }
 
-    /** Ein *vollständiger* Bot-Zug (würfeln, ziehen, kaufen, evtl. Ende). */
+    // Bot-Zug (würfeln, ziehen, kaufen, evtl. Ende). */
     private void doFullMove(Player bot) throws JsonProcessingException {
 
         if (bot.isInJail()) {
-            handleJailTurn(bot);   // unten ändern wir das ebenfalls
+            handleJailTurn(bot);
             return;
         }
 
         log.info(() -> "Bot-Turn für " + bot.getName());
 
-        /* 1 ─ Würfeln + Positionslogik einmalig im Model */
-        Game.DiceRollResult res = game.handleDiceRoll(bot.getId());
-        int     roll     = res.roll();
-        boolean pasch    = res.pasch();
-        boolean passedGo = res.passedGo();
+        /* 1) Würfeln */
+        DiceManagerInterface dm = game.getDiceManager();
+        int roll      = dm.rollDices();
+        boolean pasch = dm.isPasch();
 
-        /* 2 ─ Broadcast des Wurfs */
+        /* 2) Broadcast Roll */
         ObjectNode rollMsg = mapper.createObjectNode();
         rollMsg.put("type",     "DICE_ROLL");
         rollMsg.put("playerId", bot.getId());
@@ -124,24 +123,27 @@ public class BotManager {
         rollMsg.put("isPasch",  pasch);
         cb.broadcast(mapper.writeValueAsString(rollMsg));
 
-        log.info(() -> " → Würfel: " + roll +
-                " (" + (pasch ? "Pasch" : "Summe") + ")");
+        log.info(() -> " → Würfel: " + dm.getLastRollValues() + (pasch ? " (Pasch)" : ""));
 
-        /* 3 ─ GO-Nachricht */
+        /* 3) Position + LOS */
+        boolean passedGo = game.updatePlayerPosition(roll, bot.getId());
+
+        /* 4) Landing auswerten  */
+        game.evaluateLanding(bot);        //  ← NEU
+
         if (passedGo) {
-            cb.broadcast("SYSTEM: " + bot.getName() +
-                    " passed GO and collected €200");
+            cb.broadcast("SYSTEM: " + bot.getName() + " passed GO and collected €200");
         }
 
-        /* 4 ─ Grundstück kaufen */
+        /* 5) evtl. kaufen */
         tryBuyCurrentField(bot);
 
-        /* 5 ─ Status + Bankrott-Check */
+        /* 6) Status-Update */
         bot.setHasRolledThisTurn(true);
         cb.updateGameState();
         cb.checkBankruptcy();
 
-        /* 6 ─ Pasch? = sofort neuer Wurf */
+        /* 7) Pasch? noch einmal */
         if (pasch) {
             bot.setHasRolledThisTurn(false);
             cb.updateGameState();
@@ -149,13 +151,11 @@ public class BotManager {
             return;
         }
 
-        /* 7 ─ Zugende */
+        /* 8) Zugende */
         Player next = game.getNextPlayer();
         if (next.isBot()) {
-            exec.schedule(() -> {
-                cb.advanceToNextPlayer();
-                /* Bot startet sich dann selbst */
-            }, 1, TimeUnit.SECONDS);
+            // Bot übernimmt selbst
+            exec.schedule(cb::advanceToNextPlayer, 1, TimeUnit.SECONDS);
         } else {
             cb.advanceToNextPlayer();
             cb.updateGameState();

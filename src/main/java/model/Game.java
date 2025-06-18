@@ -6,8 +6,11 @@ import at.aau.serg.monopoly.websoket.PropertyTransactionService;
 import data.PlayerInfo;
 import lombok.Data;
 import lombok.Getter;
+import model.properties.BaseProperty;
 
 import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Logger;
 import java.util.List;
 import java.util.Optional;
@@ -16,6 +19,9 @@ import java.util.concurrent.locks.ReentrantLock;
 
 @Data
 public class Game {
+
+    private final ConcurrentMap<String, Integer> rentOpen = new ConcurrentHashMap<>();
+
     private static final Logger logger = Logger.getLogger(Game.class.getName());
     private List<Player> players;
     private boolean isStarted;
@@ -333,6 +339,45 @@ public class Game {
         }
         throw new IllegalStateException("Kein gültiger nächster Spieler gefunden");
     }
+
+
+    public BaseProperty getRentOwedProperty(Player p) {
+        BaseProperty prop = propertyService.getPropertyByPosition(p.getPosition());
+        if (prop == null)                return null;             // kein Grundstück
+        if (prop.getOwnerId() == null)   return null;             // noch frei
+        if (prop.getOwnerId().equals(p.getId())) return null;      // eigenes Feld
+        return prop;                                             // Miete fällig
+    }
+
+    public void evaluateLanding(Player p) {
+
+        // Falls für diesen Spieler schon eine offene Miete gemerkt wurde → raus
+        if (rentOpen.containsKey(p.getId())) return;
+
+        BaseProperty prop = propertyService.getPropertyByPosition(p.getPosition());
+        if (prop == null || prop.getOwnerId() == null || prop.getOwnerId().equals(p.getId()))
+            return;
+
+        if (p.isBot()) {                       // Bot zahlt sofort
+            collectRentImmediately(prop, p);
+            return;
+        }
+
+        rentOpen.put(p.getId(), prop.getId()); // EINTRAG merke …
+        broadcastRentDue(prop, p);             // Popup an Front-End
+    }
+
+// --------------------------------
+    private void broadcastRentDue(BaseProperty prop, Player renter) {
+        logger.info("RENT_DUE → " + renter.getName() +
+                " muss für " + prop.getName() + " zahlen");
+    }
+
+    private void collectRentImmediately(BaseProperty prop, Player renter) {
+        logger.info("Bot zahlt sofort Miete für " + prop.getName());
+
+    }
+
 }
 
 

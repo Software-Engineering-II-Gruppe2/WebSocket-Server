@@ -357,12 +357,12 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                             property.getName(), rentAmount);
                     String jsonRent = objectMapper.writeValueAsString(completeRentMsg);
                     broadcastMessage(jsonRent);
-                    checkAllPlayersForBankruptcy();
 
                     boolean rentCollected = rentCollectionService.collectRent(renter, property, owner);
                     if (rentCollected) {
                         logger.info("Rent of " + rentAmount + " collected from player " + renter.getId()
                                 + " for property " + property.getName());
+                        game.getRentOpen().remove(renter.getId());
                         broadcastGameState();
                         checkAllPlayersForBankruptcy();
                     } else {
@@ -566,9 +566,10 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     }
 
 
-    private void handleDiceRoll(WebSocketSession session, String userId) throws JsonProcessingException {
+    private void handleDiceRoll(WebSocketSession session, String userId)
+            throws JsonProcessingException {
 
-        /* 1 ─ Gültigkeits-Checks */
+        /* 1 ─ Vorab-Checks .......................................... */
         if (!game.isPlayerTurn(userId)) {
             sendMessageToSession(session, createJsonError("Not your turn!"));
             return;
@@ -581,38 +582,35 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                     createJsonError("You are in jail and cannot roll. End your turn."));
             return;
         }
-
         if (player.hasRolledThisTurn()) {
             sendMessageToSession(session, createJsonError("You already rolled this turn."));
             return;
         }
 
-        /* 2 ─ Würfeln + Spiellogik im Model */
-        Game.DiceRollResult res = game.handleDiceRoll(userId);   // << einziges Model-Call
-        int     roll     = res.roll();
-        boolean pasch    = res.pasch();
-        boolean passedGo = res.passedGo();
+        /* 2 ─ Würfeln über Game ..................................... */
+        Game.DiceRollResult res = game.handleDiceRoll(userId);  // <-- jetzt ein Objekt!
+        int     roll      = res.roll();
+        boolean pasch     = res.pasch();
+        boolean passedGo  = res.passedGo();
 
-        if (game.isPlayerTurn(userId)) {            // Timer neu starten
-            refreshTurnTimer(userId);
-        }
+        if (game.isPlayerTurn(userId)) refreshTurnTimer(userId);
+        if (pasch) player.setHasRolledThisTurn(false);
 
-        /* 3 ─ Broadcast DICE_ROLL */
+        /* 3 ─ DICE_ROLL verteilen ................................... */
         DiceRollMessage drm = new DiceRollMessage(
-                userId,
-                roll,
-                /* isManual */ false,
-                /* pasch     */ pasch
-        );
+                userId, roll, /*manual*/ false, pasch);
         broadcastMessage(objectMapper.writeValueAsString(drm));
 
-        /* 4 ─ GO-Meldung, falls nötig */
+        game.evaluateLanding(player);
+
+        /* 4 ─ GO-Bonus anzeigen ..................................... */
         if (passedGo) {
-            broadcastMessage("Player " + userId + " passed GO and collected €200");
+            broadcastMessage("Player " + userId
+                    + " passed GO and collected €200");
         }
 
-        /* 5 ─ Feldaktionen (Miete, Steuer, Karten …) */
-        handlePlayerLanding(player);
+        broadcastGameState();
+        checkAllPlayersForBankruptcy();
     }
 
 

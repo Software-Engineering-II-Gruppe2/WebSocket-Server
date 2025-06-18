@@ -340,15 +340,6 @@ public class Game {
         throw new IllegalStateException("Kein gültiger nächster Spieler gefunden");
     }
 
-
-    public BaseProperty getRentOwedProperty(Player p) {
-        BaseProperty prop = propertyService.getPropertyByPosition(p.getPosition());
-        if (prop == null)                return null;             // kein Grundstück
-        if (prop.getOwnerId() == null)   return null;             // noch frei
-        if (prop.getOwnerId().equals(p.getId())) return null;      // eigenes Feld
-        return prop;                                             // Miete fällig
-    }
-
     public void evaluateLanding(Player p) {
 
         // Falls für diesen Spieler schon eine offene Miete gemerkt wurde → raus

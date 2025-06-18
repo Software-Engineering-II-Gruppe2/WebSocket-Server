@@ -1,7 +1,9 @@
 package model;
 
 
+import at.aau.serg.monopoly.websoket.PropertyService;
 import model.cards.MoveCard;
+import model.properties.BaseProperty;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -9,10 +11,13 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import java.util.Date;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentMap;
 
 class GameTest {
     private Game game;
@@ -611,5 +616,63 @@ class GameTest {
         Player next = game.getNextPlayer();
         assertEquals("C", next.getId());
     }
+
+    @Test
+    void evaluateLanding_botPaysImmediately_noRentOpenEntry() throws Exception {
+        // Arrange
+        PropertyService ps = mock(PropertyService.class);
+        BaseProperty prop  = mock(BaseProperty.class);
+        when(prop.getId()).thenReturn(9);
+        when(prop.getOwnerId()).thenReturn("owner1");
+        when(prop.getName()).thenReturn("Park Place");
+        when(ps.getPropertyByPosition(35)).thenReturn(prop);
+        game.setPropertyService(ps);
+
+        game.addPlayer("bot", "Bot 🤖");
+        Player bot = game.getPlayerById("bot").orElseThrow();
+        bot.setBot(true);
+        bot.setPosition(35);
+
+        // Act
+        game.evaluateLanding(bot);
+
+        // Assert – rentOpen muss leer bleiben
+        Field f = Game.class.getDeclaredField("rentOpen");
+        f.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        ConcurrentMap<String, Integer> rentOpen = (ConcurrentMap<String, Integer>) f.get(game);
+        assertFalse(rentOpen.containsKey("bot"));
+    }
+
+    @Test
+    void evaluateLanding_whenRentAlreadyOpen_doesNothing() throws Exception {
+        // Arrange – vorher schon offene Miete eintragen
+        Field f = Game.class.getDeclaredField("rentOpen");
+        f.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        ConcurrentMap<String, Integer> rentOpen = (ConcurrentMap<String, Integer>) f.get(game);
+
+        rentOpen.put("p1", 3);
+
+        PropertyService ps = mock(PropertyService.class);
+        BaseProperty prop  = mock(BaseProperty.class);
+        when(prop.getId()).thenReturn(99);
+        when(prop.getOwnerId()).thenReturn("owner1");
+        when(prop.getName()).thenReturn("Baltic Ave");
+        when(ps.getPropertyByPosition(3)).thenReturn(prop);
+        game.setPropertyService(ps);
+
+        game.addPlayer("p1", "Player 1");
+        Player renter = game.getPlayerById("p1").orElseThrow();
+        renter.setPosition(3);
+
+        // Act – nochmal evaluateLanding aufrufen
+        game.evaluateLanding(renter);
+
+        // Assert – Eintrag bleibt unverändert
+        assertEquals(1, rentOpen.size());
+        assertEquals(3, rentOpen.get("p1"));
+    }
+
 
 }

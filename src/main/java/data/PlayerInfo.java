@@ -14,5 +14,4 @@ public class PlayerInfo {
     private int position;
     private boolean inJail;
     private int jailTurns;
-    private boolean bot;
 }

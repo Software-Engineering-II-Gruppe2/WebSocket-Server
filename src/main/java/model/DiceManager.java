@@ -14,8 +14,6 @@ public class DiceManager implements DiceManagerInterface {
     }
 
     public void initializeStandardDices() {
-        dices.clear();
-        rollHistory.clear();
         Dice firstDice = new Dice(6);
         Dice secondDice = new Dice(6);
         dices.add(firstDice);
@@ -45,12 +43,12 @@ public class DiceManager implements DiceManagerInterface {
         return lastRollValues;
     }
 
-        @Override
-        public boolean isPasch() {
-            return lastRollValues != null &&
-                    lastRollValues.size() == 2 &&
-                    lastRollValues.get(0).equals(lastRollValues.get(1));
-        }
+    @Override
+    public boolean isPasch() {
+        return lastRollValues != null &&
+                lastRollValues.size() == 2 &&
+                lastRollValues.get(0).equals(lastRollValues.get(1));
+    }
 
     @Override
     public List<Integer> getRollHistory() {

@@ -20,13 +20,4 @@ public class WebSocketConfig implements WebSocketConfigurer {
         registry.addHandler(gameWebSocketHandler(), "/monopoly")
                 .setAllowedOrigins("*");
     }
-
-    /*@Override
-    public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(gameWebSocketHandler(), "/monopoly")
-                .setAllowedOrigins("*")
-                .withSockJS()
-                .setHeartbeatTime(15_000);
-
-    }*/
 }

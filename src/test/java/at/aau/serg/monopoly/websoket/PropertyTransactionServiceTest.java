@@ -202,20 +202,20 @@ class PropertyTransactionServiceTest {
     void findPropertyById_FindsTrainStation() {
         // Setup train station property
         TrainStation trainStation = new TrainStation(
-            PROPERTY_ID,
-            null,  // unowned
-            "Test Station",
-            200,   // purchase price
-            25,    // baseRent
-            50,    // rent2Stations
-            75,    // rent3Stations
-            100,   // rent4Stations
-            MORTGAGE_VALUE,
-            false, // not mortgaged
-            "train_image",
-            5      // Added position parameter
+                PROPERTY_ID,
+                null,  // unowned
+                "Test Station",
+                200,   // purchase price
+                25,    // baseRent
+                50,    // rent2Stations
+                75,    // rent3Stations
+                100,   // rent4Stations
+                MORTGAGE_VALUE,
+                false, // not mortgaged
+                "train_image",
+                5      // Added position parameter
         );
-        
+
         // Mock houseable property to return null (not found)
         when(propertyService.getHouseablePropertyById(PROPERTY_ID)).thenReturn(null);
         // Mock train stations to include our test station
@@ -250,18 +250,18 @@ class PropertyTransactionServiceTest {
     void findPropertyById_FindsUtility() {
         // Setup utility property
         Utility utility = new Utility(
-            PROPERTY_ID,
-            null,  // unowned
-            "Test Utility",
-            150,   // purchase price
-            4,     // rentOneUtilityMultiplier
-            10,    // rentTwoUtilitiesMultiplier
-            MORTGAGE_VALUE,
-            false, // not mortgaged
-            "utility_image",
-            12     // Added position parameter
+                PROPERTY_ID,
+                null,  // unowned
+                "Test Utility",
+                150,   // purchase price
+                4,     // rentOneUtilityMultiplier
+                10,    // rentTwoUtilitiesMultiplier
+                MORTGAGE_VALUE,
+                false, // not mortgaged
+                "utility_image",
+                12     // Added position parameter
         );
-        
+
         // Mock houseable property and train stations to return null/empty (not found)
         when(propertyService.getHouseablePropertyById(PROPERTY_ID)).thenReturn(null);
         when(propertyService.getTrainStations()).thenReturn(Collections.emptyList());
@@ -334,18 +334,18 @@ class PropertyTransactionServiceTest {
     void sellProperty_WithTrainStation() {
         // Arrange
         TrainStation trainStation = new TrainStation(
-            PROPERTY_ID,
-            PLAYER_ID,  // owned by test player
-            "Test Station",
-            200,   // purchase price
-            25,    // baseRent
-            50,    // rent2Stations
-            75,    // rent3Stations
-            100,   // rent4Stations
-            MORTGAGE_VALUE,
-            false, // not mortgaged
-            "train_image",
-            5      // position
+                PROPERTY_ID,
+                PLAYER_ID,  // owned by test player
+                "Test Station",
+                200,   // purchase price
+                25,    // baseRent
+                50,    // rent2Stations
+                75,    // rent3Stations
+                100,   // rent4Stations
+                MORTGAGE_VALUE,
+                false, // not mortgaged
+                "train_image",
+                5      // position
         );
         lenient().when(propertyService.getHouseablePropertyById(PROPERTY_ID)).thenReturn(null);
         lenient().when(propertyService.getTrainStations()).thenReturn(Collections.singletonList(trainStation));
@@ -366,16 +366,16 @@ class PropertyTransactionServiceTest {
     void sellProperty_WithUtility() {
         // Arrange
         Utility utility = new Utility(
-            PROPERTY_ID,
-            PLAYER_ID,  // owned by test player
-            "Test Utility",
-            150,   // purchase price
-            4,     // rentOneUtilityMultiplier
-            10,    // rentTwoUtilitiesMultiplier
-            MORTGAGE_VALUE,
-            false, // not mortgaged
-            "utility_image",
-            12     // position
+                PROPERTY_ID,
+                PLAYER_ID,  // owned by test player
+                "Test Utility",
+                150,   // purchase price
+                4,     // rentOneUtilityMultiplier
+                10,    // rentTwoUtilitiesMultiplier
+                MORTGAGE_VALUE,
+                false, // not mortgaged
+                "utility_image",
+                12     // position
         );
         when(propertyService.getHouseablePropertyById(PROPERTY_ID)).thenReturn(null);
         when(propertyService.getTrainStations()).thenReturn(Collections.emptyList());
@@ -405,41 +405,5 @@ class PropertyTransactionServiceTest {
         // Assert
         assertFalse(result);
     }
-
-    @Test
-    void sellProperty_AddMoneyThrowsException_ReturnsFalse() {
-        testProperty.setOwnerId(PLAYER_ID);
-        when(propertyService.getHouseablePropertyById(PROPERTY_ID)).thenReturn(testProperty);
-        Player spyPlayer = spy(testPlayer);
-        doThrow(new RuntimeException("Boom")).when(spyPlayer).addMoney(anyInt());
-
-        boolean result = propertyTransactionService.sellProperty(spyPlayer, PROPERTY_ID);
-
-        assertFalse(result);
-    }
-    @Test
-    void buyProperty_SubtractMoneyThrowsException_ReturnsFalse() {
-        testPlayer.setMoney(PURCHASE_PRICE + 50);
-        testPlayer.setPosition(1);
-        when(propertyService.getHouseablePropertyById(PROPERTY_ID)).thenReturn(testProperty);
-        Player spyPlayer = spy(testPlayer);
-        doThrow(new RuntimeException("Boom")).when(spyPlayer).subtractMoney(anyInt());
-
-        boolean result = propertyTransactionService.buyProperty(spyPlayer, PROPERTY_ID);
-
-        assertFalse(result);
-    }
-    @Test
-    void canBuyProperty_NullPlayer_ReturnsFalse() {
-        boolean result = propertyTransactionService.canBuyProperty(null, PROPERTY_ID);
-        assertFalse(result);
-    }
-    @Test
-    void findPropertyByPosition_ReturnsCorrectProperty() {
-        when(propertyService.getPropertyByPosition(5)).thenReturn(testProperty);
-        BaseProperty found = propertyTransactionService.findPropertyByPosition(5);
-        assertEquals(testProperty, found);
-    }
-
 
 }

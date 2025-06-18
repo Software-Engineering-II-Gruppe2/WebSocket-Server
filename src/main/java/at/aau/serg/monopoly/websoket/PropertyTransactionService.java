@@ -32,12 +32,12 @@ public class PropertyTransactionService {
         }
 
         boolean isOnProperty = player.getPosition() == property.getPosition();
-        
+
         if (!isOnProperty) {
             logger.log(Level.INFO, "Player {0} is not on property {1}. Player position: {2}, Property position: {3}",
                     new Object[]{player.getId(), property.getName(), player.getPosition(), property.getPosition()});
         }
-        
+
         return isOnProperty;
     }
 
@@ -70,10 +70,10 @@ public class PropertyTransactionService {
         BaseProperty property = findPropertyById(propertyId);
 
         // Double-check conditions in case state changed
-        if (property == null || property.getOwnerId() != null || 
-            player.getMoney() < property.getPurchasePrice() || 
-            !isPlayerOnProperty(player, property)) {
-            logger.log(Level.WARNING, "Attempted to buy property {0} by player {1} failed pre-check.", 
+        if (property == null || property.getOwnerId() != null ||
+                player.getMoney() < property.getPurchasePrice() ||
+                !isPlayerOnProperty(player, property)) {
+            logger.log(Level.WARNING, "Attempted to buy property {0} by player {1} failed pre-check.",
                     new Object[]{propertyId, player.getId()});
             return false;
         }
@@ -101,19 +101,19 @@ public class PropertyTransactionService {
      */
     public boolean sellProperty(Player player, int propertyId) {
         BaseProperty property = findPropertyById(propertyId);
-        
+
         if (property == null || !player.getId().equals(property.getOwnerId())) {
-            logger.log(Level.WARNING, "Attempted to sell property {0} by player {1} failed pre-check.", 
+            logger.log(Level.WARNING, "Attempted to sell property {0} by player {1} failed pre-check.",
                     new Object[]{propertyId, player.getId()});
             return false;
         }
-        
+
         try {
             // Return half of the purchase price to the player
             int sellAmount = property.getPurchasePrice() / 2;
             player.addMoney(sellAmount);
             property.setOwnerId(null);
-            
+
             logger.log(Level.INFO, "Player {0} successfully sold property {1}. New balance: {2}",
                     new Object[]{player.getId(), propertyId, player.getMoney()});
             return true;
@@ -147,8 +147,5 @@ public class PropertyTransactionService {
                 .filter(p -> p.getId() == propertyId)
                 .findFirst()
                 .orElse(null);
-    }
-    public BaseProperty findPropertyByPosition(int position) {
-        return propertyService.getPropertyByPosition(position);   // liefert null, falls nichts dort liegt
     }
 }

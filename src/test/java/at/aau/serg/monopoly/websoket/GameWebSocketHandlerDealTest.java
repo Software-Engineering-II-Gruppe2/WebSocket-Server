@@ -79,14 +79,11 @@ class GameWebSocketHandlerDealTest {
 
         handler.handleTextMessage(fromSession, new TextMessage(json));
 
-        // mindestens eine Nachricht muss angekommen sein
-        verify(toSession, atLeastOnce()).sendMessage(any(TextMessage.class));
+        verify(toSession).sendMessage(any(TextMessage.class));
     }
-
 
     @Test
     void testDealProposalWithOfferedProperties() throws Exception {
-        // ---------- arrange ----------
         DealProposalMessage proposal = new DealProposalMessage();
         proposal.setType("DEAL_PROPOSAL");
         proposal.setFromPlayerId("fromPlayer");
@@ -97,12 +94,10 @@ class GameWebSocketHandlerDealTest {
 
         String json = objectMapper.writeValueAsString(proposal);
 
-
-        clearInvocations(fromSession, toSession);
         handler.handleTextMessage(fromSession, new TextMessage(json));
+
         verify(toSession).sendMessage(any(TextMessage.class));
     }
-
 
     @Test
     void testDealResponseAcceptCallsDealServiceAndBroadcasts() throws Exception {
@@ -137,11 +132,8 @@ class GameWebSocketHandlerDealTest {
 
         handler.handleTextMessage(fromSession, new TextMessage(json));
 
-        // ─── Erwartung: Trade-Methode NICHT aufgerufen ────────────────
         verify(dealService, never()).executeTrade(any());
-
-        // ─── Erwartung: Mindestens eine Antwort an den Empfänger ──────
-        verify(toSession, atLeastOnce()).sendMessage(any(TextMessage.class));
+        verify(toSession).sendMessage(any(TextMessage.class));
     }
 
     @Test
@@ -167,7 +159,6 @@ class GameWebSocketHandlerDealTest {
     }
     @Test
     void testDealProposalIsSavedAndLoggedIfTargetNotFound() throws Exception {
-        // ---------- arrange ----------
         DealProposalMessage proposal = new DealProposalMessage();
         proposal.setType("DEAL_PROPOSAL");
         proposal.setFromPlayerId("fromPlayer");
@@ -178,22 +169,19 @@ class GameWebSocketHandlerDealTest {
 
         String json = objectMapper.writeValueAsString(proposal);
 
-        // Ziel-Session aus der aktiven Liste entfernen
+        // Ensure that the session for "missingPlayer" is not present
         CopyOnWriteArrayList<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
-        sessions.add(fromSession);
+        sessions.add(fromSession); // Only fromSession is present
         ReflectionTestUtils.setField(handler, "sessions", sessions);
 
-        /*  ❗ Wichtig: Aufrufe aus afterConnectionEstablished verwerfen  */
-        clearInvocations(fromSession, toSession);
-
-        // ---------- act ----------
         handler.handleTextMessage(fromSession, new TextMessage(json));
 
-        // ---------- assert ----------
+        // Proposal should still be saved even if recipient session is not found
         verify(dealService).saveProposal(any(DealProposalMessage.class));
-        verify(toSession, never()).sendMessage(any());   // jetzt korrekt
-    }
 
+        // No message should be sent since session is missing
+        verify(toSession, never()).sendMessage(any());
+    }
 
     @Test
     void testDealResponseAcceptWithPropertiesBroadcastsMessages() throws Exception {
@@ -262,15 +250,16 @@ class GameWebSocketHandlerDealTest {
                 List.of(2),
                 200
         );
+
         String json = objectMapper.writeValueAsString(counter);
 
+        // Only fromSession is connected
         CopyOnWriteArrayList<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
         sessions.add(fromSession);
         ReflectionTestUtils.setField(handler, "sessions", sessions);
 
-        clearInvocations(fromSession, toSession);
-
         handler.handleTextMessage(fromSession, new TextMessage(json));
+
         verify(dealService).saveCounterProposal(any(CounterProposalMessage.class));
         verify(toSession, never()).sendMessage(any());
     }

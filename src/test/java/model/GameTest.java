@@ -1,6 +1,5 @@
 package model;
 
-
 import model.cards.MoveCard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,7 +10,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.lang.reflect.Field;
-import java.util.Date;
 import java.util.Optional;
 
 class GameTest {
@@ -274,7 +272,7 @@ class GameTest {
     void givenInvalidCurrentPlayerIndex_whenCheckingPlayerTurn_thenShouldReturnFalse() throws Exception {
         // Arrange
         game.addPlayer(player1.getId(), player1.getName());
-        
+
         // Use reflection to set an invalid currentPlayerIndex
         Field currentPlayerIndexField = Game.class.getDeclaredField("currentPlayerIndex");
         currentPlayerIndexField.setAccessible(true);
@@ -414,8 +412,8 @@ class GameTest {
         assertEquals(2, player.get().getJailTurns());
     }
 
-  @Test
-  void testGiveUpCurrentPlayerRemovedAdvancesTurnCorrectly() {
+    @Test
+    void testGiveUpCurrentPlayerRemovedAdvancesTurnCorrectly() {
         // Arrange: Player B's turn
         game.addPlayer("A", "Alice");
         game.addPlayer("B", "Bob");
@@ -486,130 +484,4 @@ class GameTest {
                 .containsExactly("B");
         assertThat(game.getCurrentPlayer().getId()).isEqualTo("B");
     }
-    @Test
-    void testReplaceDisconnectedWithBot() {
-        game.addPlayer("A", "Alice");
-        assertFalse(game.getPlayerById("A").get().isBot());
-
-        game.markPlayerDisconnected("A");
-        game.replaceDisconnectedWithBot("A");
-
-        Optional<Player> bot = game.getPlayerById("A");
-        assertTrue(bot.isPresent());
-        assertTrue(bot.get().isBot());
-    }
-
-
-    @Test
-    void testReconnectMarksPlayerAsConnected() {
-        game.addPlayer("A", "Alice");
-        game.markPlayerDisconnected("A");
-
-        // Spieler sollte jetzt nicht mehr verbunden sein
-        assertFalse(game.getPlayerById("A").get().isConnected());
-
-        game.markPlayerConnected("A");
-
-        // Spieler ist wieder verbunden
-        assertTrue(game.getPlayerById("A").get().isConnected());
-    }
-
-
-
-    @Test
-    void testStartBotTurnSkipsToNextIfBot() {
-        game.addPlayer("A", "Alice");
-        game.addPlayer("B", "BotB");
-        game.getPlayerById("B").get().setBot(true);
-
-        game.setCurrentPlayerIndex(1); // Bot ist dran
-        game.nextPlayer();
-
-        assertEquals("A", game.getCurrentPlayer().getId());
-    }
-
-    @Test
-    void testStartAndDurationPlayed(){
-        assertFalse(game.isStarted());
-        game.start();
-        assertTrue(game.isStarted());
-        assertNotNull(game.getStartTime());
-        int dur = game.getDurationPlayed();
-        assertTrue(dur >= 0, "Duration should be >= 0");
-    }
-
-    @Test
-    void testEndGameSetsWinnerAndReturnsDuration() {
-        game.start();
-
-        // Manipuliere den Startzeitpunkt direkt (z. B. 2 Minuten früher)
-        long fakeStart = System.currentTimeMillis() - (2 * 60 * 1000);
-        game.setStartTime(new Date(fakeStart));
-
-        int duration = game.endGame("playerX");
-
-        assertFalse(game.isStarted());
-        assertEquals("playerX", game.getWinnerId());
-        assertTrue(duration >= 2, "endGame should return at least 2 minutes");
-    }
-
-
-    @Test
-    void testResetForNewMatch() {
-        game.addPlayer("A","A");
-        game.addPlayer("B","B");
-        // muck around
-        game.updatePlayerPosition(5,"A");
-        game.sendToJail("B");
-        game.resetForNewMatch();
-        assertTrue(game.isStarted());
-        assertEquals(0, game.getCurrentPlayerIndex());
-        for (Player p : game.getPlayers()) {
-            assertEquals(0, p.getPosition());
-            assertEquals(1500, p.getMoney());
-            assertFalse(p.isInJail());
-            assertFalse(p.hasRolledThisTurn());
-        }
-    }
-
-    @Test
-    void testReset() {
-        game.addPlayer("A","A");
-        game.addPlayer("B","B");
-        game.start();
-        game.endGame("A");
-        game.updatePlayerPosition(10,"A");
-        game.sendToJail("B");
-        game.reset();
-        assertFalse(game.isStarted());
-        assertNull(game.getWinnerId());
-        assertEquals(0, game.getCurrentPlayerIndex());
-        for (Player p : game.getPlayers()) {
-            assertEquals(0, p.getPosition());
-            assertEquals(1500, p.getMoney());
-            assertFalse(p.isInJail());
-            assertEquals(0, p.getJailTurns());
-            assertTrue(p.isConnected());
-            assertFalse(p.isBot());
-            assertFalse(p.hasRolledThisTurn());
-        }
-    }
-
-    @Test
-    void testGetNextPlayerThrowsWhenEmpty() {
-        Game empty = new Game();
-        assertThrows(IllegalStateException.class, empty::getNextPlayer);
-    }
-
-    @Test
-    void testGetNextPlayerSkipsDisconnectedHumans() {
-        game.addPlayer("A","A");
-        game.addPlayer("B","B");
-        game.addPlayer("C","C");
-        game.setCurrentPlayerIndex(0);
-        game.markPlayerDisconnected("B");
-        Player next = game.getNextPlayer();
-        assertEquals("C", next.getId());
-    }
-
 }
